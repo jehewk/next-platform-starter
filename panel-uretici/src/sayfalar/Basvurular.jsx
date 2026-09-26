@@ -1,0 +1,109 @@
+import { useState } from "react";
+import { Kart } from "../bilesenler/Kart";
+import { SatirIskelet, HataKutusu } from "../bilesenler/VeriDurumu";
+import { useVeri } from "../api/useVeri";
+import { basvuruListesi, basvuruKarar } from "../api/servis";
+import { tarihTR } from "../veri/yardimci";
+
+const URUN_ADI = { aku: "Akü", inverter: "İnverter", ikisi: "Akü + İnverter" };
+
+/**
+ * Kayıt başvuruları.
+ *
+ * Müşteri kendi kaydını oluşturur ama hesabı onaylanana kadar giriş
+ * yapamaz. Burada başvuru bilgileri görülür ve onaylanır/reddedilir.
+ * Onaylanınca kişi kendi belirlediği şifreyle girebilir; reddedilince
+ * hem başvuru hem açılan hesap tamamen silinir.
+ */
+export default function Basvurular() {
+  const { veri: liste, yukleniyor, hata, yenile } = useVeri(basvuruListesi);
+  const [islemde, setIslemde] = useState(null);
+  const [sonuc, setSonuc] = useState(null);
+
+  async function karar(id, ad, secim) {
+    if (secim === "ret" && !confirm(`${ad} başvurusu reddedilecek ve kaydı silinecek. Emin misiniz?`)) return;
+    setIslemde(id);
+    setSonuc(null);
+    try {
+      await basvuruKarar(id, secim);
+      setSonuc({ tur: "iyi", metin: secim === "onay" ? `${ad} onaylandı.` : `${ad} başvurusu reddedildi.` });
+      yenile();
+    } catch (e) {
+      setSonuc({ tur: "kotu", metin: e.message });
+    } finally {
+      setIslemde(null);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-lg font-semibold">Kayıt Başvuruları</h1>
+        <p className="mt-1 text-sm text-soluk">
+          Müşteri uygulamasından gelen yeni kayıtlar. Onaylanana kadar giriş yapamazlar.
+        </p>
+      </div>
+
+      {sonuc && (
+        <p className={`text-sm ${sonuc.tur === "iyi" ? "text-saglikli" : "text-kritik"}`}>{sonuc.metin}</p>
+      )}
+
+      {yukleniyor ? (
+        <SatirIskelet satir={3} />
+      ) : hata ? (
+        <HataKutusu hata={hata} yenile={yenile} />
+      ) : liste.length === 0 ? (
+        <Kart cocuk={
+          <div className="px-5 py-14 text-center">
+            <p className="text-sm text-soluk">Bekleyen başvuru yok.</p>
+          </div>
+        } />
+      ) : (
+        <Kart
+          baslik="Bekleyen Başvurular"
+          ustBilgi={<span className="text-xs text-soluk">{liste.length} kayıt</span>}
+          cocuk={
+            <div className="divide-y divide-cizgi">
+              {liste.map((b) => (
+                <div key={b.id} className="px-4 py-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-baseline gap-x-2.5">
+                        <span className="text-sm font-medium">{b.ad}</span>
+                        <span className="text-xs text-sonuk">{tarihTR(b.tarih)}</span>
+                      </div>
+                      <div className="mt-1.5 grid gap-x-6 gap-y-1 text-xs text-soluk sm:grid-cols-2">
+                        <span>{b.eposta}</span>
+                        <span>{b.telefon}</span>
+                        <span>{b.ilce}, {b.il} {b.postaKodu}</span>
+                        <span>{URUN_ADI[b.urun] || b.urun}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-sonuk">{b.adres}</p>
+                    </div>
+
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        onClick={() => karar(b.id, b.ad, "onay")}
+                        disabled={islemde === b.id}
+                        className="border border-saglikli/40 px-3 py-1.5 text-xs text-saglikli
+                                   transition-colors hover:bg-saglikli/5 disabled:opacity-40">
+                        {islemde === b.id ? "…" : "Onayla"}
+                      </button>
+                      <button
+                        onClick={() => karar(b.id, b.ad, "ret")}
+                        disabled={islemde === b.id}
+                        className="border border-cizgi px-3 py-1.5 text-xs text-soluk
+                                   transition-colors hover:border-kritik/40 hover:text-kritik disabled:opacity-40">
+                        Reddet
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          }
+        />
+      )}
+    </div>
+  );
+}
