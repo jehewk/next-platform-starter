@@ -292,6 +292,63 @@ export async function demoIstek(yol, secenekler = {}) {
     }
     case "/de/kayit/liste":
       return { basvurular: BASVURULAR };
+    case "/de/musteri/olustur": {
+      if (!govde.ad?.trim()) throw Object.assign(new Error("Ad zorunlu"), { durum: 400 });
+      const m = {
+        musteri_id: `MUS-${1001 + MUSTERILER.length}`,
+        ad: govde.ad.trim(), tip: govde.tip || "Konut", il: govde.il || "", ilce: govde.ilce || "",
+        adres: govde.adres || "", telefon: govde.telefon || "", email: govde.email || "",
+        lat: govde.lat ?? null, lng: govde.lng ?? null, olusturma: new Date().toISOString(),
+      };
+      MUSTERILER.push(m);
+      return { musteri_id: m.musteri_id };
+    }
+    case "/de/cihaz/uret": {
+      const adet = Math.max(1, Math.min(50, Number(govde.adet) || 1));
+      if (!PARTILER.find((p) => p.kod === govde.parti)) {
+        PARTILER.push({ kod: govde.parti, tip: govde.tip, gun: 0 });
+      }
+      const on = govde.tip === "aku" ? "AKU" : "INV";
+      const yil = String(new Date().getFullYear()).slice(2);
+      const ids = [];
+      for (let i = 0; i < adet; i++) {
+        sayac[on + yil] = (sayac[on + yil] || 40) + 1;
+        const id = `${on}-D${yil}-${String(sayac[on + yil]).padStart(4, "0")}`;
+        CIHAZLAR.push({
+          cihaz_id: id, tip: govde.tip, model: govde.model, parti: govde.parti,
+          musteri_id: null, durum: "depoda", saglik: null,
+          uretim_tarihi: new Date().toISOString(), kurulum_tarihi: null,
+          kapasite_ah: govde.kapasite_ah ?? null, hucre_sayisi: govde.tip === "aku" ? 16 : null,
+          guc_kw: govde.guc_kw ?? null, son_soc: null, gunluk_kwh: null,
+          oncelikli: null, ozet: "", kalan_gun: null, guven: null,
+        });
+        ids.push(id);
+      }
+      return { cihazlar: ids };
+    }
+    case "/de/cihaz/guncelle": {
+      const c = cihaz(govde.cihaz_id);
+      if (!c) throw Object.assign(new Error("Cihaz bulunamadı"), { durum: 404 });
+      if (govde.musteri_id !== undefined) {
+        c.musteri_id = govde.musteri_id || null;
+        if (c.musteri_id && !c.kurulum_tarihi) c.kurulum_tarihi = new Date().toISOString();
+      }
+      if (govde.durum) c.durum = govde.durum;
+      if (c.musteri_id && c.saglik == null) c.saglik = 100;
+      if (!c.musteri_id) { c.saglik = null; c.son_soc = null; c.gunluk_kwh = null; }
+      return { ok: true };
+    }
+    case "/de/garanti/talep": {
+      const c = cihaz(govde.cihaz_id);
+      if (!c) throw Object.assign(new Error("Cihaz bulunamadı"), { durum: 404 });
+      const t = {
+        talep_id: `GT-${2500 + GARANTI.length}`, cihaz_id: c.cihaz_id, musteri_id: c.musteri_id,
+        aciklama: govde.aciklama, durum: "inceleniyor", sinif: "belirsiz", guven: null,
+        tarih: new Date().toISOString(),
+      };
+      GARANTI.unshift(t);
+      return { talep_id: t.talep_id };
+    }
     case "/de/kayit/karar": {
       const i = BASVURULAR.findIndex((b) => b.musteri_id === govde.musteri_id);
       if (i >= 0) BASVURULAR.splice(i, 1);

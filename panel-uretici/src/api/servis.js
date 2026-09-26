@@ -250,8 +250,20 @@ export async function partiListesi() {
   }));
 }
 
+/**
+ * Üretim hattında yeni cihaz kaydı.
+ * veri: {tip, model, parti, adet, kapasite_ah?, guc_kw?} → {cihazlar: [cihaz_id…]}
+ */
 export async function cihazUret(veri) {
   return api.post("/de/cihaz/uret", veri);
+}
+
+/**
+ * Cihazın lojistik durumunu / müşterisini değiştirir.
+ * alanlar: {durum?: "depoda"|"sevkte"|"aktif", musteri_id?: string|null}
+ */
+export async function cihazGuncelle(cihazId, alanlar) {
+  return api.post("/de/cihaz/guncelle", { cihaz_id: cihazId, ...alanlar });
 }
 
 // ══════════════════ İNVERTER DETAYI ══════════════════

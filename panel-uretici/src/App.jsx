@@ -5,6 +5,9 @@ import UstCubuk from "./bilesenler/UstCubuk";
 import KomutPaleti from "./bilesenler/KomutPaleti";
 import SohbetCekmecesi from "./bilesenler/SohbetCekmecesi";
 import HataSiniri from "./bilesenler/HataSiniri";
+import Intro from "./bilesenler/Intro";
+import AltMenu from "./bilesenler/AltMenu";
+import { ToastSaglayici } from "./bilesenler/Toast";
 import { Iskelet } from "./bilesenler/VeriDurumu";
 import Giris from "./sayfalar/Giris";
 import { oturumOku } from "./api/oturum";
@@ -27,16 +30,33 @@ const Uretim        = lazy(() => import("./sayfalar/Uretim"));
 const Asistan       = lazy(() => import("./sayfalar/Asistan"));
 const Ayarlar       = lazy(() => import("./sayfalar/Ayarlar"));
 
+const INTRO_ANAHTAR = "de_intro_goruldu";
+
+function introGosterilsinMi() {
+  try { return !sessionStorage.getItem(INTRO_ANAHTAR); } catch { return false; }
+}
+
 export default function App() {
+  const [intro, setIntro] = useState(introGosterilsinMi);
+
+  function introBitti() {
+    try { sessionStorage.setItem(INTRO_ANAHTAR, "1"); } catch { /* gizli sekme */ }
+    setIntro(false);
+  }
+
+  if (intro) return <Intro bitince={introBitti} />;
+
   return (
     <HataSiniri>
       <AyarlarSaglayici>
+       <ToastSaglayici>
         <BrowserRouter>
           <Routes>
             <Route path="/giris" element={<Giris />} />
             <Route path="/*" element={<Korumali><SohbetSaglayici><Uygulama /></SohbetSaglayici></Korumali>} />
           </Routes>
         </BrowserRouter>
+       </ToastSaglayici>
       </AyarlarSaglayici>
     </HataSiniri>
   );
@@ -82,7 +102,10 @@ function Uygulama() {
           paletAc={() => setPaletAcik(true)}
           sohbetAc={() => setSohbetAcik(true)}
         />
-        <main className={sohbetSayfasi ? "p-4 lg:p-6" : "mx-auto max-w-[1400px] p-4 lg:p-6"}>
+        {/* Telefonda alt menünün altında içerik kalmasın diye alt boşluk bırakılır. */}
+        <main className={sohbetSayfasi
+          ? "p-4 lg:p-6"
+          : "mx-auto max-w-[1400px] p-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:p-6"}>
           <Suspense fallback={<Iskelet satir={3} />}>
             <Routes>
               <Route path="/"             element={<GenelBakis />} />
@@ -105,6 +128,7 @@ function Uygulama() {
         </main>
       </div>
 
+      <AltMenu menuAc={() => setMenuAcik(true)} />
       <KomutPaleti acik={paletAcik} kapat={() => setPaletAcik(false)} />
       <SohbetCekmecesi acik={sohbetAcik && !sohbetSayfasi} kapat={() => setSohbetAcik(false)} />
     </div>

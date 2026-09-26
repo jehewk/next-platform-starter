@@ -136,3 +136,30 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
     transition-duration: .01ms !important;
   }
 }
+
+/* ── Açılış (Intro.tsx) ── */
+.imlec-beyaz {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: -0.12em;
+  background: #FFFFFF;
+  animation: imlec-yanip-sonme 900ms steps(2) infinite;
+}
+@keyframes imlec-yanip-sonme {
+  0%, 50%   { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+/* Birimler bandın üzerinde soldan sağa akar; girişte ve çıkışta silikleşir. */
+.hat-birim { animation: hat-akis 3.3s linear infinite; opacity: 0; }
+@keyframes hat-akis {
+  0%   { transform: translateX(-16px); opacity: 0; }
+  12%  { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { transform: translateX(280px); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .imlec-beyaz, .hat-birim { animation: none; }
+  .hat-birim { opacity: .7; }
+}

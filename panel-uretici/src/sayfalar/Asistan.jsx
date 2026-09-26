@@ -15,7 +15,7 @@ export default function Asistan() {
   }
 
   return (
-    <div className="-m-4 flex h-[calc(100vh-3.5rem)] lg:-m-6">
+    <div className="-m-4 flex h-[calc(100dvh-3.5rem-4rem-env(safe-area-inset-bottom))] lg:-m-6 lg:h-[calc(100dvh-3.5rem)]">
       <aside className="hidden w-64 shrink-0 flex-col border-r border-cizgi md:flex">
         <div className="p-3">
           <button onClick={yeni} className="dugme-ikincil w-full justify-start">
