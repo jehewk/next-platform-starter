@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Kart, Olcum } from "../bilesenler/Kart";
+import { Kart, Olcum, OlcumSeridi, SayfaBasligi } from "../bilesenler/Kart";
 import { Rozet } from "../bilesenler/Rozet";
 import { SatirIskelet, HataKutusu } from "../bilesenler/VeriDurumu";
 import { useVeri } from "../api/useVeri";
@@ -23,21 +23,17 @@ export default function Uretim() {
   const arizali = PARTILER.reduce((t, p) => t + p.arizali, 0);
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold">Üretim</h1>
-        <p className="mt-1 text-sm text-soluk">
-          Üretilen, sevk edilen, depoda bekleyen ve sahada çalışan ürünler — parti bazında.
-        </p>
-      </div>
+    <div className="space-y-5">
+      <SayfaBasligi baslik="Üretim"
+        aciklama={<>Üretilen, sevk edilen, depoda bekleyen ve sahada çalışan ürünler — parti bazında.</>} />
 
-      <div className="grid grid-cols-2 border border-cizgi bg-panel md:grid-cols-5">
+      <OlcumSeridi sutun={5}>
         <Olcum etiket="Üretilen" deger={sayi(toplam)} />
         <Olcum etiket="Sevk edilen" deger={sayi(sevk)} />
         <Olcum etiket="Depoda" deger={sayi(depoda)} />
         <Olcum etiket="Sahada kurulu" deger={sayi(kurulu)} />
         <Olcum etiket="Arızalı" deger={arizali} vurgu={arizali ? "text-kritik" : "text-metin"} />
-      </div>
+      </OlcumSeridi>
 
       {/* parti tablosu */}
       <Kart
@@ -45,17 +41,17 @@ export default function Uretim() {
         ustBilgi={<span className="text-xs text-soluk">{PARTILER.length} parti</span>}
         cocuk={
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
+            <table className="tablo w-full min-w-[760px] text-sm">
               <thead>
-                <tr className="border-b border-cizgi text-xs font-medium text-sonuk">
-                  <th className="px-4 py-2.5 text-left font-normal">Parti</th>
-                  <th className="px-4 py-2.5 text-left font-normal">Tip</th>
-                  <th className="px-4 py-2.5 text-left font-normal">Tarih</th>
-                  <th className="px-4 py-2.5 text-right font-normal">Üretilen</th>
-                  <th className="px-4 py-2.5 text-right font-normal">Sevk</th>
-                  <th className="px-4 py-2.5 text-right font-normal">Depoda</th>
-                  <th className="px-4 py-2.5 text-right font-normal">Kurulu</th>
-                  <th className="px-4 py-2.5 text-right font-normal">Arıza oranı</th>
+                <tr>
+                  <th>Parti</th>
+                  <th>Tip</th>
+                  <th>Tarih</th>
+                  <th className="!text-right">Üretilen</th>
+                  <th className="!text-right">Sevk</th>
+                  <th className="!text-right">Depoda</th>
+                  <th className="!text-right">Kurulu</th>
+                  <th className="!text-right">Arıza oranı</th>
                 </tr>
               </thead>
               <tbody>
@@ -65,7 +61,7 @@ export default function Uretim() {
                   return (
                     <tr key={p.kod}
                       onClick={() => setSecili(secili === p.kod ? null : p.kod)}
-                      className="cursor-pointer border-b border-cizgi last:border-b-0 hover:bg-panel2">
+                      className="cursor-pointer">
                       <td className="px-4 py-3 font-mono text-xs">{p.kod}</td>
                       <td className="px-4 py-3 text-xs text-soluk">
                         {p.tip === "aku" ? "Akü" : "İnverter"}

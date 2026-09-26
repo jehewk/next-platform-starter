@@ -1,21 +1,20 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { girisYap } from "../api/oturum";
+import { useNavigate, useLocation } from "react-router-dom";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { girisYap, demoGiris } from "../api/oturum";
+import { demoAcik } from "../api/demo";
 import Logo from "../bilesenler/Logo";
-import GirisSahnesi from "../bilesenler/GirisSahnesi";
 import Kaptcha from "../bilesenler/Kaptcha";
 
-/**
- * Giriş ekranı.
- *
- * Arka planda inverter–akü–lamba sahnesi; form sahnenin sağındaki
- * siyah alana yukarıdan süzülerek gelir. Telefonda sahne üstte kalır,
- * form altındaki siyah alana yerleşir.
- */
+/** Giriş ekranı: düz koyu zemin, ortada form. */
 export default function Giris() {
   const git = useNavigate();
+  const konum = useLocation();
+  const donus = konum.state?.donus && konum.state.donus !== "/giris" ? konum.state.donus : "/";
+
   const [eposta, setEposta] = useState("");
   const [sifre, setSifre] = useState("");
+  const [sifreGoster, setSifreGoster] = useState(false);
   const [kod, setKod] = useState("");
   const [kaptchaToken, setKaptchaToken] = useState("");
   const [hata, setHata] = useState(null);
@@ -27,7 +26,7 @@ export default function Giris() {
     setGonderiliyor(true);
     try {
       await girisYap(eposta.trim(), sifre, kaptchaToken, kod);
-      git("/", { replace: true });
+      git(donus, { replace: true });
     } catch (err) {
       setHata(err.message);
     } finally {
@@ -35,61 +34,71 @@ export default function Giris() {
     }
   }
 
-  return (
-    <div className="relative min-h-screen overflow-hidden bg-[#020303]">
-      <GirisSahnesi />
+  function demoIleGir() {
+    demoGiris();
+    git(donus, { replace: true });
+  }
 
-      {/* Telefonda sahne üstte ~%56vw yükseklik kaplar; form hemen altına oturur. */}
-      <div className="relative z-10 flex min-h-screen items-start justify-center px-5 pb-8 pt-[64vw]
-                      sm:items-center sm:justify-end sm:pb-0 sm:pr-[7%] sm:pt-0 lg:pr-[9%]">
-        <form
-          onSubmit={gonder}
-          className="form-gir w-full max-w-sm border border-white/12 bg-[#08090A] p-7
-                     shadow-[0_30px_80px_rgba(0,0,0,.65)]"
-        >
-          <div className="flex items-center gap-2.5">
-            <Logo boyut={28} />
-            <div className="leading-tight">
-              <div className="text-sm font-semibold text-white">Dennis Enerji</div>
-              <div className="text-xs text-white/50">Üretici Paneli</div>
-            </div>
+  return (
+    <div className="flex min-h-screen flex-col bg-zemin">
+      <main className="flex flex-1 items-center justify-center px-5 py-12">
+        <div className="w-full max-w-[380px]">
+          <div className="mb-8 flex flex-col items-center text-center">
+            <Logo boyut={40} zeminRenk="rgb(var(--metin))" renk="rgb(var(--zemin))" />
+            <h1 className="mt-5 text-xl font-semibold tracking-tight">Üretici paneline giriş</h1>
+            <p className="mt-1.5 text-sm text-soluk">Dennis Enerji hesabınızla devam edin.</p>
           </div>
 
-          <div className="mt-6 space-y-3">
+          <form onSubmit={gonder} className="space-y-4 rounded-xl border border-cizgi bg-panel p-6">
             <div>
-              <label className="text-xs font-medium text-white/60">E-posta</label>
-              <input
-                type="email" required autoFocus value={eposta}
-                onChange={(e) => setEposta(e.target.value)}
-                className="mt-1 w-full border border-white/15 bg-white/5 px-3 py-2 text-sm text-white
-                           outline-none transition-colors placeholder:text-white/30 focus:border-white/40"
-                placeholder="ornek@dennisenerji.com"
-              />
+              <label htmlFor="eposta" className="etiket">E-posta</label>
+              <input id="eposta" type="email" required autoFocus autoComplete="username"
+                value={eposta} onChange={(e) => setEposta(e.target.value)}
+                className="girdi" placeholder="ad@dennisenerji.com" />
             </div>
             <div>
-              <label className="text-xs font-medium text-white/60">Şifre</label>
-              <input
-                type="password" required value={sifre}
-                onChange={(e) => setSifre(e.target.value)}
-                className="mt-1 w-full border border-white/15 bg-white/5 px-3 py-2 text-sm text-white
-                           outline-none transition-colors focus:border-white/40"
-              />
+              <label htmlFor="sifre" className="etiket">Şifre</label>
+              <div className="relative">
+                <input id="sifre" type={sifreGoster ? "text" : "password"} required autoComplete="current-password"
+                  value={sifre} onChange={(e) => setSifre(e.target.value)} className="girdi pr-10" />
+                <button type="button" onClick={() => setSifreGoster((g) => !g)}
+                  aria-label={sifreGoster ? "Şifreyi gizle" : "Şifreyi göster"}
+                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-sonuk hover:text-metin">
+                  {sifreGoster ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
             </div>
             <Kaptcha deger={kod} onChange={setKod} onToken={setKaptchaToken} />
-          </div>
 
-          {hata && <p className="mt-3 text-xs text-red-400">{hata}</p>}
+            {hata && (
+              <p role="alert" className="rounded-md border border-kritik/30 bg-kritik/10 px-3 py-2 text-xs text-kritik">
+                {hata}
+              </p>
+            )}
 
-          <button
-            type="submit" disabled={gonderiliyor}
-            className="mt-5 w-full bg-white py-2.5 text-sm font-medium text-black
-                       transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            {gonderiliyor ? "Giriş yapılıyor…" : "Giriş yap"}
-          </button>
+            <button type="submit" disabled={gonderiliyor} className="dugme-ana w-full">
+              {gonderiliyor && <Loader2 size={15} className="animate-spin" />}
+              {gonderiliyor ? "Giriş yapılıyor…" : "Giriş yap"}
+            </button>
 
-        </form>
-      </div>
+            {demoAcik && (
+              <>
+                <div className="flex items-center gap-3 text-2xs uppercase tracking-wider text-sonuk">
+                  <span className="h-px flex-1 bg-cizgi" />veya<span className="h-px flex-1 bg-cizgi" />
+                </div>
+                <button type="button" onClick={demoIleGir} className="dugme-ikincil w-full">
+                  Demo verisiyle incele
+                </button>
+              </>
+            )}
+          </form>
+
+          <p className="mt-6 text-center text-xs text-sonuk">
+            Hesabınız yoksa yöneticinizden erişim isteyin.
+          </p>
+        </div>
+      </main>
+      <footer className="pb-6 text-center text-2xs text-sonuk">© {new Date().getFullYear()} Dennis Enerji</footer>
     </div>
   );
 }

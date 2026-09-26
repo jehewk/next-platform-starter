@@ -2,109 +2,137 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light; }
+/* ── Tema değişkenleri (RGB üçlüsü; Tailwind opaklık ekleyebilsin diye) ── */
+:root,
+:root[data-tema="koyu"] {
+  color-scheme: dark;
+  --zemin:    9 9 11;      /* #09090B */
+  --panel:    17 17 19;    /* #111113 */
+  --panel2:   24 24 27;    /* #18181B */
+  --cizgi:    39 39 42;    /* #27272A */
+  --metin:    244 244 245; /* #F4F4F5 */
+  --soluk:    161 161 170; /* #A1A1AA */
+  --sonuk:    113 113 122; /* #71717A */
+  --vurgu:    59 130 246;  /* #3B82F6 */
+  --saglikli: 34 197 94;
+  --uyari:    245 158 11;
+  --kritik:   239 68 68;
+  --bilgi:    96 165 250;
+}
+
+:root[data-tema="acik"] {
+  color-scheme: light;
+  --zemin:    250 250 250;
+  --panel:    255 255 255;
+  --panel2:   244 244 245;
+  --cizgi:    228 228 231;
+  --metin:    9 9 11;
+  --soluk:    82 82 91;
+  --sonuk:    113 113 122;
+  --vurgu:    37 99 235;
+  --saglikli: 21 128 61;
+  --uyari:    180 83 9;
+  --kritik:   185 28 28;
+  --bilgi:    37 99 235;
+}
+
 html, body, #root { height: 100%; }
 body {
   margin: 0;
-  background: #FFFFFF;
-  color: #14181D;
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background: rgb(var(--zemin));
+  color: rgb(var(--metin));
+  font-family: Inter, system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss01";
   -webkit-font-smoothing: antialiased;
 }
 * { box-sizing: border-box; }
 
-/* ince kaydırma çubuğu — kontrol odası hissi */
-::-webkit-scrollbar { width: 9px; height: 9px; }
-::-webkit-scrollbar-track { background: #FFFFFF; }
-::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+::selection { background: rgb(var(--vurgu) / 0.35); }
 
-/* klavye odağı görünür kalsın */
-:focus-visible { outline: 2px solid #0F172A; outline-offset: 2px; }
-
-/* Leaflet koyu tema uyumu */
-/* Harita zemini: karolar yuklenene kadar (veya yuklenemezse) gorunen
-   renk. Koyu kalirsa beyaz temada kara bir dikdortgen olusur. */
-.leaflet-container {
-  background: #EAEAE4 !important;
-  font-family: 'IBM Plex Sans', sans-serif;
-  overflow: hidden;
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--cizgi));
+  border: 3px solid rgb(var(--zemin));
+  border-radius: 999px;
 }
-.leaflet-tile-pane { background: #EAEAE4; }
-/* Leaflet'in zoom proxy katmanı yerleşimi taşırmasın */
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--sonuk)); }
+
+:focus-visible { outline: 2px solid rgb(var(--vurgu)); outline-offset: 2px; }
+/* Metin alanları odağı kendi kenarlığı/halkasıyla gösterir. */
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline: none; }
+
+/* Sıkı yoğunluk: tablo satırları ve kart iç boşlukları daralır. */
+:root[data-yogunluk="siki"] td { padding-top: 0.45rem; padding-bottom: 0.45rem; }
+
+/* ── Ortak bileşen sınıfları ── */
+@layer components {
+  .girdi {
+    @apply w-full rounded-md border border-cizgi bg-zemin px-3 py-2 text-sm text-metin
+           outline-none transition-colors placeholder:text-sonuk
+           focus:border-soluk focus:ring-2 focus:ring-vurgu/20 disabled:opacity-50;
+  }
+  .etiket { @apply mb-1.5 block text-xs font-medium text-soluk; }
+
+  .dugme {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium
+           transition-colors disabled:pointer-events-none disabled:opacity-50;
+  }
+  .dugme-ana    { @apply dugme bg-metin text-zemin hover:bg-metin/90; }
+  .dugme-ikincil{ @apply dugme border border-cizgi bg-panel text-metin hover:bg-panel2; }
+  .dugme-hayalet{ @apply dugme text-soluk hover:bg-panel2 hover:text-metin; }
+  .dugme-tehlike{ @apply dugme border border-kritik/40 text-kritik hover:bg-kritik/10; }
+
+  .cip {
+    @apply inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors;
+  }
+  .cip-pasif { @apply cip border-cizgi text-soluk hover:border-soluk/50 hover:text-metin; }
+  .cip-aktif { @apply cip border-metin/30 bg-panel2 text-metin; }
+
+  .tablo th { @apply px-4 py-2.5 text-left text-xs font-medium text-sonuk; }
+  .tablo td { @apply px-4 py-3; }
+  .tablo tbody tr { @apply border-t border-cizgi transition-colors hover:bg-panel2/60; }
+}
+
+/* ── Leaflet: tema uyumu ── */
+/* Leaflet katmanları z-index 400+ kullanır; kendi yığın bağlamında kalsın
+   ki üst çubuk, diyalog ve çekmecelerin üstüne çıkmasın. */
+.leaflet-container {
+  isolation: isolate;
+  z-index: 0;
+  background: rgb(var(--panel2)) !important;
+  font-family: Inter, system-ui, sans-serif;
+}
 .leaflet-pane, .leaflet-proxy { contain: layout size; }
 .leaflet-popup-content-wrapper, .leaflet-popup-tip {
-  background: #FFFFFF; color: #14181D; border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(20,24,29,.12);
-  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  background: rgb(var(--panel));
+  color: rgb(var(--metin));
+  border: 1px solid rgb(var(--cizgi));
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgb(0 0 0 / .35);
 }
 .leaflet-popup-content { margin: 12px 14px; font-size: 13px; }
+.leaflet-container a.leaflet-popup-close-button { color: rgb(var(--sonuk)); }
+.leaflet-tooltip {
+  background: rgb(var(--panel)); color: rgb(var(--metin));
+  border: 1px solid rgb(var(--cizgi)); box-shadow: none;
+}
+.leaflet-tooltip-top:before { border-top-color: rgb(var(--cizgi)); }
 .leaflet-control-zoom a {
-  background: #1B2029 !important; color: #E6E9ED !important;
-  border-color: #242B35 !important;
+  background: rgb(var(--panel)) !important;
+  color: rgb(var(--metin)) !important;
+  border-color: rgb(var(--cizgi)) !important;
 }
 .leaflet-control-attribution {
-  background: rgba(14,17,22,.85) !important; color: #5B6472 !important; font-size: 10px !important;
+  background: rgb(var(--panel) / .8) !important;
+  color: rgb(var(--sonuk)) !important;
+  font-size: 10px !important;
 }
-.leaflet-control-attribution a { color: #8A93A0 !important; }
+.leaflet-control-attribution a { color: rgb(var(--soluk)) !important; }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
-}
-
-
-/* ══════════════════ İNTRO ══════════════════ */
-
-/* Daktilo imleci — beyaz, lacivert zemin üzerinde */
-.imlec-beyaz {
-  display: inline-block;
-  width: 2px;
-  height: 1.05em;
-  margin-left: 3px;
-  vertical-align: -0.12em;
-  background: #FFFFFF;
-  animation: imlec-yanip-sonme 900ms steps(2) infinite;
-}
-
-@keyframes imlec-yanip-sonme {
-  0%, 50%   { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-
-/* Üretim hattı: birimler bandın üzerinde soldan sağa ilerler.
-   Girişte ve çıkışta silikleşir — bant devam ediyor hissi verir. */
-.hat-birim {
-  animation: hat-akis 3.3s linear infinite;
-  opacity: 0;
-}
-
-@keyframes hat-akis {
-  0%   { transform: translateX(-16px); opacity: 0; }
-  12%  { opacity: 1; }
-  88%  { opacity: 1; }
-  100% { transform: translateX(280px); opacity: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .imlec-beyaz, .hat-birim { animation: none; }
-  .hat-birim { opacity: .7; }
   *, *::before, *::after {
     animation-duration: .01ms !important;
     transition-duration: .01ms !important;
   }
 }
-
-/* Derleme izi şeridi sabit (fixed) ve normal akışın dışında; sayfa
-   içeriğinin altında kalmaması için gövdeye üst boşluk verilir. */
-body { padding-top: 22px; }
-
-/* ══════════════ GİRİŞ FORMU GİRİŞ ANİMASYONU ══════════════
-   Form, sahne yüklendikten kısa süre sonra yukarıdan süzülerek
-   yerine oturur. Hareket azaltma tercihinde animasyon atlanır. */
-@keyframes form-yukaridan {
-  0%   { opacity: 0; transform: translateY(-70px); }
-  60%  { opacity: 1; }
-  100% { opacity: 1; transform: translateY(0); }
-}
-.form-gir { animation: form-yukaridan 950ms cubic-bezier(.16,.84,.24,1) 350ms both; }
-@media (prefers-reduced-motion: reduce) { .form-gir { animation: none; } }

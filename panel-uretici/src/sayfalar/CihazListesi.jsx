@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { Kart } from "../bilesenler/Kart";
+import { Link, useNavigate } from "react-router-dom";
+import { Search } from "lucide-react";
+import { Kart, SayfaBasligi, Bos } from "../bilesenler/Kart";
 import { Rozet, SaglikCubugu } from "../bilesenler/Rozet";
 import { SatirIskelet, HataKutusu } from "../bilesenler/VeriDurumu";
 import { useVeri } from "../api/useVeri";
@@ -14,6 +15,7 @@ import { saglikDurumu, durumRengi, DURUM_ADI, garantiDurumu } from "../veri/yard
  *  sıcaklığı) her cihaz için ayrı bir çağrı gerektirir ve yalnızca
  *  detay sayfasında istenir.                                        */
 export default function CihazListesi({ tip }) {
+  const git = useNavigate();
   const [suzgec, setSuzgec] = useState("hepsi");
   const [ara, setAra] = useState("");
   const { veri: cihazlar, yukleniyor, hata, yenile } = useVeri(() => cihazListesi({ tip }), [tip]);
@@ -31,33 +33,29 @@ export default function CihazListesi({ tip }) {
 
   const liste = hepsi
     .filter(suzgecler.find((s) => s.id === suzgec).test)
-    .filter((c) => (c.id + c.model + c.parti).toLowerCase().includes(ara.toLowerCase()))
+    .filter((c) => [c.id, c.model, c.parti, musteriMap[c.musteriId]?.ad].join(" ")
+      .toLocaleLowerCase("tr").includes(ara.toLocaleLowerCase("tr")))
     .sort((a, b) => (a.saglik ?? 999) - (b.saglik ?? 999));
 
   const baslik = tip === "aku" ? "Aküler" : "İnverterler";
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold">{baslik}</h1>
-        <p className="mt-1 text-sm text-soluk">
-          Üretilen tüm {tip === "aku" ? "aküler" : "inverterler"} — sahada, depoda ve sevkte olanlar.
-        </p>
-      </div>
+    <div className="space-y-5">
+      <SayfaBasligi baslik={baslik}
+        aciklama={`Üretilen tüm ${tip === "aku" ? "aküler" : "inverterler"} — sahada, depoda ve sevkte olanlar.`} />
 
       <div className="flex flex-wrap items-center gap-2">
         {suzgecler.map((s) => (
           <button key={s.id} onClick={() => setSuzgec(s.id)}
-            className={`border px-3 py-1.5 text-xs font-medium transition-colors ${
-              suzgec === s.id ? "border-metin bg-panel2 text-metin"
-                              : "border-cizgi text-soluk hover:border-soluk hover:text-metin"}`}>
-            {s.ad} · {hepsi.filter(s.test).length}
+            className={suzgec === s.id ? "cip-aktif" : "cip-pasif"}>
+            {s.ad} <span className="tabular-nums text-sonuk">{hepsi.filter(s.test).length}</span>
           </button>
         ))}
-        <input value={ara} onChange={(e) => setAra(e.target.value)}
-          placeholder="Seri no, model, parti…"
-          className="ml-auto w-full max-w-[240px] border border-cizgi bg-panel px-3 py-1.5 text-xs
-                     outline-none transition-colors placeholder:text-sonuk focus:border-soluk" />
+        <div className="relative ml-auto w-full sm:w-64">
+          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sonuk" />
+          <input value={ara} onChange={(e) => setAra(e.target.value)}
+            placeholder="Seri no, model, parti, müşteri…" className="girdi pl-8" />
+        </div>
       </div>
 
       {yukleniyor ? (
@@ -67,21 +65,21 @@ export default function CihazListesi({ tip }) {
       ) : (
         <Kart cocuk={
           liste.length === 0 ? (
-            <div className="px-5 py-12 text-center"><p className="text-sm text-soluk">Kayıt bulunamadı.</p></div>
+            <Bos metin="Kayıt bulunamadı." alt="Filtreyi veya aramayı değiştirin." />
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-sm">
+              <table className="tablo w-full min-w-[760px] text-sm">
                 <thead>
-                  <tr className="border-b border-cizgi text-xs font-medium text-sonuk">
-                    <th className="px-4 py-2.5 text-left font-normal">Seri no</th>
-                    <th className="px-4 py-2.5 text-left font-normal">Model</th>
-                    <th className="px-4 py-2.5 text-left font-normal">Müşteri</th>
-                    <th className="px-4 py-2.5 text-left font-normal">Durum</th>
-                    <th className="px-4 py-2.5 text-right font-normal">
+                  <tr>
+                    <th>Seri no</th>
+                    <th>Model</th>
+                    <th>Müşteri</th>
+                    <th>Durum</th>
+                    <th className="!text-right">
                       {tip === "aku" ? "Kapasite" : "Güç"}
                     </th>
-                    <th className="px-4 py-2.5 text-left font-normal">Garanti</th>
-                    <th className="px-4 py-2.5 text-left font-normal">Sağlık</th>
+                    <th>Garanti</th>
+                    <th>Sağlık</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -91,22 +89,18 @@ export default function CihazListesi({ tip }) {
                     const g = garantiDurumu(c);
                     const yol = tip === "aku" ? `/aku/${c.id}` : `/inverter/${c.id}`;
                     return (
-                      <tr key={c.id} className="border-b border-cizgi transition-colors last:border-b-0 hover:bg-panel2">
+                      <tr key={c.id} onClick={() => git(yol)} className="cursor-pointer">
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-2.5">
-                            {tip === "aku" && (
-                              <img src="/gorseller/aku-kucuk.webp" alt="" width={28} height={28}
-                                   className="shrink-0 border border-cizgi bg-white object-contain" />
-                            )}
+                          <div>
                             <div>
-                              <Link to={yol} className="font-mono text-xs">{c.id}</Link>
+                              <Link to={yol} onClick={(e) => e.stopPropagation()} className="font-mono text-xs hover:underline">{c.id}</Link>
                               <div className="text-xs text-sonuk">parti {c.parti}</div>
                             </div>
                           </div>
                         </td>
                         <td className="px-4 py-3 font-mono text-xs text-soluk">{c.model}</td>
                         <td className="px-4 py-3 text-xs">
-                          {m ? <Link to={`/musteri/${m.id}`} className="hover:underline">{m.ad}</Link>
+                          {m ? <Link to={`/musteri/${m.id}`} onClick={(e) => e.stopPropagation()} className="hover:underline">{m.ad}</Link>
                              : <span className="text-sonuk">—</span>}
                         </td>
                         <td className="px-4 py-3">
@@ -121,8 +115,8 @@ export default function CihazListesi({ tip }) {
                         <td className="w-28 px-4 py-3">
                           {c.saglik == null ? <span className="text-xs text-sonuk">—</span> : (
                             <div className="flex items-center gap-2">
-                              <span className="w-7 font-mono text-xs">{c.saglik}</span>
-                              <SaglikCubugu deger={c.saglik} durum={d} />
+                              <span className="w-7 text-xs tabular-nums">{c.saglik}</span>
+                              <SaglikCubugu deger={c.saglik} durum={d} ince />
                             </div>
                           )}
                         </td>

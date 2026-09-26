@@ -3,19 +3,16 @@ import { ChevronLeft, AlertTriangle, Clock } from "lucide-react";
 import { useVeri } from "../api/useVeri";
 import { cihazBul, musteriBul, akuDetayUyarla, cihazGecmisi } from "../api/servis";
 import {
-  saglikDurumu, DURUM_ADI, durumRengi, garantiDurumu, tarihTR, sureMetni,
+  saglikDurumu, DURUM_ADI, durumRengi, garantiDurumu, tarihTR, sureMetni, onceMetni, DURUM_YAZI,
 } from "../veri/yardimci";
 import { Iskelet, HataKutusu } from "../bilesenler/VeriDurumu";
+import { useGrafikRenkleri, Ipucu } from "../bilesenler/Grafik";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from "recharts";
 
 /**
- * Akü gösterge paneli — Daly BMS arayüzü referans alındı.
- *
- * Tasarım ilkesi: BMS ekranında ne varsa aynı yerde, aynı sadelikte
- * olsun. Teknisyen alışkın olduğu düzeni bulsun. Sistemin kendi
- * katkısı (trend, müdahale penceresi) bunun üstüne eklenir.
- *
- * Beyaz tema: gölge yok, ince kenar çizgileri var. Renk yalnızca
- * durum bildirir — dekorasyon için kullanılmaz.
+ * Akü detay sayfası. Düzen BMS ekranlarını izler (hücre gerilimleri,
+ * sıcaklık sensörleri, MOSFET durumu, hata kodları); üzerine sistemin
+ * kendi katkısı olan öngörü ve hücre eğilimi eklenir.
  */
 
 export default function AkuDetay() {
@@ -32,7 +29,7 @@ export default function AkuDetay() {
 
   if (!aku || aku.tip !== "aku") {
     return (
-      <div className="border border-cizgi px-5 py-14 text-center">
+      <div className="rounded-lg border border-cizgi bg-panel px-5 py-14 text-center">
         <p className="text-sm text-soluk">Akü bulunamadı.</p>
         <Link to="/akuler" className="mt-3 inline-block text-xs text-bilgi hover:underline">
           ← akü listesine dön
@@ -44,10 +41,8 @@ export default function AkuDetay() {
   const d = akuDetayUyarla({ ...aku, gecmis });
   const durum = saglikDurumu(aku.saglik);
   const g = garantiDurumu(aku);
-  const yazi = {
-    saglikli: "text-saglikli", uyari: "text-uyari",
-    kritik: "text-kritik", notr: "text-sonuk",
-  }[durum];
+  const yazi = DURUM_YAZI[durum];
+  const olcumZamani = aku.sonOlcum?.zaman;
 
   return (
     <div className="space-y-4">
@@ -66,7 +61,7 @@ export default function AkuDetay() {
               {aku.model} · 16S · parti {aku.parti} · üretim {tarihTR(aku.uretim)}
             </p>
             <p className="mt-1 text-xs text-sonuk">
-              Son ölçüm 4 dk önce · örnekleme 10 dk
+              {d.veriYok ? "Cihaz henüz ölçüm göndermedi" : olcumZamani ? `Son ölçüm ${onceMetni(olcumZamani)}` : "Son ölçüm alındı"}
             </p>
           </div>
           <DurumEtiketi durum={durumRengi(aku.durum)} metin={DURUM_ADI[aku.durum]} />
@@ -74,33 +69,33 @@ export default function AkuDetay() {
       </div>
 
       {/* ══ ÜST ŞERİT — BMS ana göstergeleri ══ */}
-      <div className="overflow-hidden border border-cizgi">
+      <div className="overflow-hidden rounded-lg border border-cizgi bg-panel">
         <div className="grid divide-y divide-cizgi lg:grid-cols-[264px_1fr] lg:divide-x lg:divide-y-0">
           <div className="flex items-center gap-5 p-6">
             <Batarya yuzde={aku.sarj} durum={durum} />
             <div>
               <div className={`text-[2.75rem] font-semibold leading-none tabular-nums ${yazi}`}>
-                {aku.sarj}<span className="text-xl font-normal text-sonuk">%</span>
+                {aku.sarj ?? "—"}<span className="text-xl font-normal text-sonuk">%</span>
               </div>
               <div className="mt-2 text-xs font-medium tracking-wide text-sonuk">
                 Şarj durumu
               </div>
               <div className="mt-3 text-sm text-soluk tabular-nums">
-                {d.kalanKapasiteAh} / {d.toplamKapasiteAh} Ah
+                {d.kalanKapasiteAh ?? "—"} / {d.toplamKapasiteAh ?? "—"} Ah
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 divide-x divide-y divide-cizgi sm:grid-cols-4">
-            <Olcum e="Paket gerilimi" v={aku.gerilim} b="V" />
-            <Olcum e="Akım" v={d.akim > 0 ? `+${d.akim}` : d.akim} b="A" />
-            <Olcum e="Sağlık" v={aku.saglik} vurgu={yazi} />
-            <Olcum e="Çevrim" v={aku.cevrim} vurgu={aku.cevrim > 1000 ? "text-uyari" : ""} />
-            <Olcum e="Hücre farkı" v={(d.fark * 1000).toFixed(0)} b="mV"
+          <div className="grid grid-cols-2 gap-px bg-cizgi sm:grid-cols-4">
+            <Olcum e="Paket gerilimi" v={d.paketGerilim ?? "—"} b={d.paketGerilim != null ? "V" : null} />
+            <Olcum e="Akım" v={d.akim == null ? "—" : d.akim > 0 ? `+${d.akim}` : d.akim} b={d.akim != null ? "A" : null} />
+            <Olcum e="Sağlık" v={aku.saglik ?? "—"} vurgu={yazi} />
+            <Olcum e="Çevrim" v={d.cevrim ?? "—"} vurgu={d.cevrim > 1000 ? "text-uyari" : ""} />
+            <Olcum e="Hücre farkı" v={d.fark != null ? (d.fark * 1000).toFixed(0) : "—"} b={d.fark != null ? "mV" : null}
                    vurgu={d.fark > 0.08 ? "text-uyari" : ""} />
-            <Olcum e="Ortalama" v={d.ortalama} b="V" />
-            <Olcum e="Sıcaklık" v={aku.sicaklik} b="°C"
-                   vurgu={aku.sicaklik > 35 ? "text-uyari" : ""} />
+            <Olcum e="Ortalama" v={d.ortalama ?? "—"} b={d.ortalama != null ? "V" : null} />
+            <Olcum e="Sıcaklık" v={d.sicaklik ?? "—"} b={d.sicaklik != null ? "°C" : null}
+                   vurgu={d.sicaklik > 35 ? "text-uyari" : ""} />
             <Olcum e="Garanti" v={g.gecerli ? Math.round(g.kalanGun / 30) : 0} b="ay"
                    vurgu={g.gecerli ? "" : "text-kritik"} />
           </div>
@@ -108,7 +103,7 @@ export default function AkuDetay() {
       </div>
 
       {aku.tahmin && (
-        <div className={`rounded-lg border border-l-[3px] border-cizgi px-5 py-4
+        <div className={`rounded-lg border border-l-[3px] border-cizgi bg-panel px-5 py-4
                         ${durum === "kritik" ? "border-l-kritik" : "border-l-uyari"}`}>
           <div className="flex items-start gap-3">
             <AlertTriangle size={17} strokeWidth={1.9} className={`mt-0.5 shrink-0 ${yazi}`} />
@@ -117,9 +112,9 @@ export default function AkuDetay() {
               <p className="mt-1 text-sm leading-relaxed text-soluk">{aku.tahmin.gerekce}</p>
               <div className="mt-2.5 flex items-center gap-1.5 text-xs text-sonuk">
                 <Clock size={12} />
-                müdahale penceresi {sureMetni(aku.tahmin.kalanSaat)}
+                {aku.tahmin.kalanSaat != null ? `müdahale penceresi ${sureMetni(aku.tahmin.kalanSaat)}` : "müdahale penceresi hesaplanmadı"}
                 <span className="mx-1 text-cizgi">|</span>
-                %{aku.tahmin.guven} güven
+                {aku.tahmin.guven != null ? `%${aku.tahmin.guven} güven` : "güven hesaplanmadı"}
               </div>
             </div>
           </div>
@@ -127,8 +122,8 @@ export default function AkuDetay() {
       )}
 
       <Panel
-        baslik="Hücre Gerilimleri"
-        sag={
+        baslik="Hücre gerilimleri"
+        sag={d.enYuksek && d.enDusuk &&
           <span className="text-xs text-soluk">
             en yüksek <b className="font-medium text-metin">{d.enYuksek.deger}V</b> h{d.enYuksek.no}
             <span className="mx-2 text-cizgi">·</span>
@@ -140,12 +135,13 @@ export default function AkuDetay() {
           </span>
         }
       >
-        <Hucreler detay={d} />
+        {d.hucreler.length ? <Hucreler detay={d} /> : <VeriBekleniyor />}
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Panel baslik="Sıcaklık Sensörleri">
+        <Panel baslik="Sıcaklık sensörleri">
           <div className="divide-y divide-cizgi">
+            {d.sicakliklar.length === 0 && <VeriBekleniyor />}
             {d.sicakliklar.map((s) => {
               // BMS dort sensor bildirir ama sahada hepsi bagli olmayabilir.
               // Bagli olmayan sensor "—" gosterilir; sifir gostermek yanlis olur.
@@ -174,22 +170,22 @@ export default function AkuDetay() {
           </div>
         </Panel>
 
-        <Panel baslik="Sistem Durumu">
+        <Panel baslik="Sistem durumu">
           <div className="divide-y divide-cizgi">
-            <Satir e="ŞARJ MOSFET" v={d.sarjMos ? "AÇIK" : "KAPALI"} iyi={d.sarjMos} />
-            <Satir e="DEŞARJ MOSFET" v={d.desarjMos ? "AÇIK" : "KAPALI"} iyi={d.desarjMos} />
-            <Satir e="DENGELEME"
-                   v={d.dengeleme.length ? `HÜCRE ${d.dengeleme.join(", ")}` : "PASİF"}
+            <Satir e="Şarj MOSFET" v={d.sarjMos == null ? "—" : d.sarjMos ? "Açık" : "Kapalı"} iyi={d.sarjMos} />
+            <Satir e="Deşarj MOSFET" v={d.desarjMos == null ? "—" : d.desarjMos ? "Açık" : "Kapalı"} iyi={d.desarjMos} />
+            <Satir e="Dengeleme"
+                   v={d.dengeleme.length ? `Hücre ${d.dengeleme.join(", ")}` : "Pasif"}
                    iyi={null} />
-            <Satir e="HÜCRE SAYISI" v="16S" iyi={null} />
+            <Satir e="Hücre sayısı" v={`${aku.hucreSayisi ?? 16}S`} iyi={null} />
           </div>
         </Panel>
 
-        <Panel baslik="Uyarı ve Hata Kodları"
+        <Panel baslik="Uyarı ve hata kodları"
                sag={<span className="text-xs text-sonuk">{d.hatalar.length}</span>}>
           {d.hatalar.length === 0 ? (
             <div className="px-5 py-10 text-center">
-              <p className="text-xs text-sonuk">AKTİF UYARI YOK</p>
+              <p className="text-xs text-sonuk">Aktif uyarı yok</p>
             </div>
           ) : (
             <div className="divide-y divide-cizgi">
@@ -207,14 +203,14 @@ export default function AkuDetay() {
         </Panel>
       </div>
 
-      <Panel baslik="Hücre Yaşlanma Eğilimi"
-             sag={<span className="text-xs text-sonuk">son 30 gün · mV</span>}>
+      <Panel baslik="Hücre yaşlanma eğilimi"
+             sag={<span className="text-xs text-sonuk">son 30 gün · günlük ortalama</span>}>
         <div className="p-4">
           <p className="mb-5 max-w-[78ch] text-sm leading-relaxed text-soluk">
-            BMS anlık değerleri verir; sistem bu değerlerin zaman içindeki seyrini izler.
-            Belirgin şekilde ayrışan hücre, kapasite kaybının ilk işaretidir.
+            En yüksek ve en düşük hücre arasındaki gerilim farkı. Sürekli artan fark,
+            bir hücrenin ayrıştığını ve kapasite kaybının başladığını gösterir.
           </p>
-          <Egilim veri={d.egilim} />
+          {d.egilim.length ? <Egilim veri={d.egilim} /> : <VeriBekleniyor metin="Eğilim için en az iki günlük ölçüm gerekir." />}
         </div>
       </Panel>
     </div>
@@ -223,11 +219,15 @@ export default function AkuDetay() {
 
 /* ═══════════════ PARÇALAR ═══════════════ */
 
+function VeriBekleniyor({ metin = "Ölçüm verisi bekleniyor." }) {
+  return <p className="px-5 py-10 text-center text-xs text-sonuk">{metin}</p>;
+}
+
 function Panel({ baslik, sag, children }) {
   return (
-    <section className="overflow-hidden border border-cizgi bg-panel">
-      <header className="flex items-center justify-between gap-3 border-b border-cizgi px-4 py-2.5">
-        <h2 className="text-xs font-medium tracking-wide text-sonuk">{baslik}</h2>
+    <section className="overflow-hidden rounded-lg border border-cizgi bg-panel">
+      <header className="flex min-h-[44px] items-center justify-between gap-3 border-b border-cizgi px-4 py-2.5">
+        <h2 className="text-sm font-medium">{baslik}</h2>
         {sag}
       </header>
       {children}
@@ -252,7 +252,7 @@ function DurumEtiketi({ durum, metin }) {
 }
 
 function Batarya({ yuzde, durum }) {
-  const renk = { saglikli: "#1F7A4D", uyari: "#A8751B", kritik: "#C0392B", notr: "#9AA1AB" }[durum];
+  const renk = `rgb(var(--${{ saglikli: "saglikli", uyari: "uyari", kritik: "kritik" }[durum] || "sonuk"}))`;
   const dolu = Math.max(0, Math.min(100, yuzde ?? 0));
   return (
     <div className="flex shrink-0 flex-col items-center gap-2">
@@ -264,7 +264,7 @@ function Batarya({ yuzde, durum }) {
         src="/gorseller/aku-orta.webp"
         alt="Dennis Energy akü"
         width={80} height={80}
-        className="border border-cizgi bg-white object-contain p-1"
+        className="rounded-md bg-white object-contain p-1"
       />
       <div className="h-1.5 w-20 overflow-hidden rounded-full bg-cizgi">
         <div className="h-full rounded-full transition-all" style={{ width: `${dolu}%`, background: renk }} />
@@ -309,33 +309,27 @@ function Hucreler({ detay }) {
   );
 }
 
+const FARK_ESIK_MV = 80; // BMS dengeleme sınırı; üstü "izlemede" sayılır
+
 function Egilim({ veri }) {
+  const r = useGrafikRenkleri();
+  const tarih = (g) => g.slice(5).split("-").reverse().join(".");
   return (
-    <div className="relative overflow-x-auto">
-      <div className="absolute left-0 right-0 top-1/2 h-px bg-cizgi" />
-      <div className="relative flex items-center gap-2" style={{ height: 120 }}>
-        {veri.map((e) => {
-          const v = Number(e.degisim);
-          const kotu = v < -15;
-          const yuk = Math.min(46, Math.abs(v) * 1.6 + 3);
-          return (
-            <div key={e.no} className="flex h-full min-w-[24px] flex-1 flex-col items-center">
-              <div className="flex w-full flex-1 items-end justify-center">
-                {v > 0 && <div className="w-full rounded-t-sm bg-soluk"
-                               style={{ height: `${yuk}%`, opacity: 0.4 }} />}
-              </div>
-              <div className="flex w-full flex-1 flex-col items-center">
-                {v < 0 && <div className={`w-full rounded-b-sm ${kotu ? "bg-kritik" : "bg-soluk"}`}
-                               style={{ height: `${yuk}%`, opacity: kotu ? 1 : 0.4 }} />}
-                <span className={`mt-auto text-xs
-                                 ${kotu ? "font-medium text-kritik" : "text-sonuk"}`}>
-                  {e.no}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+    <div className="h-[220px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={veri} margin={{ top: 8, right: 12, bottom: 0, left: -16 }}>
+          <CartesianGrid stroke={r.izgara} vertical={false} />
+          <XAxis dataKey="gun" tickFormatter={tarih} tick={{ fill: r.eksen, fontSize: 11 }}
+            axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={24} />
+          <YAxis tick={{ fill: r.eksen, fontSize: 11 }} axisLine={false} tickLine={false} unit=" mV" width={64} />
+          <ReferenceLine y={FARK_ESIK_MV} stroke={r.uyari} strokeDasharray="4 4" strokeOpacity={0.7}
+            label={{ value: `eşik ${FARK_ESIK_MV} mV`, position: "insideTopLeft", fill: r.soluk, fontSize: 11 }} />
+          <Tooltip cursor={{ stroke: r.eksen, strokeDasharray: "3 3" }}
+            content={<Ipucu bicim={(v) => `${v} mV`} etiket={tarih} />} />
+          <Line type="monotone" dataKey="farkMv" name="Hücre farkı" stroke={r.seri} strokeWidth={2}
+            dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: r.yuzey }} isAnimationActive={false} />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -349,8 +343,8 @@ function Egilim({ veri }) {
  */
 function Olcum({ e, v, b, vurgu }) {
   return (
-    <div className="px-4 py-3 transition-colors duration-200 hover:bg-panel2">
-      <div className="text-xs font-medium tracking-wide text-sonuk">{e}</div>
+    <div className="bg-panel px-4 py-3">
+      <div className="text-xs text-sonuk">{e}</div>
       <div className={`mt-1.5 text-2xl font-semibold tabular-nums
                        ${vurgu || "text-metin"}`}>
         {v}
@@ -361,10 +355,10 @@ function Olcum({ e, v, b, vurgu }) {
 }
 
 function Satir({ e, v, iyi }) {
-  const renk = iyi === null ? "text-soluk" : iyi ? "text-saglikli" : "text-kritik";
+  const renk = iyi == null ? "text-soluk" : iyi ? "text-saglikli" : "text-kritik";
   return (
     <div className="flex items-center justify-between px-4 py-2.5">
-      <span className="text-xs font-medium text-sonuk">{e}</span>
+      <span className="text-xs text-sonuk">{e}</span>
       <span className={`text-xs font-medium ${renk}`}>{v}</span>
     </div>
   );

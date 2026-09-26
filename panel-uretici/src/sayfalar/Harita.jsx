@@ -5,36 +5,32 @@ import { useVeri } from "../api/useVeri";
 import { musteriListesi, cihazListesi } from "../api/servis";
 import { saglikDurumu } from "../veri/yardimci";
 import { Iskelet, HataKutusu } from "../bilesenler/VeriDurumu";
+import { SayfaBasligi } from "../bilesenler/Kart";
+import { useGrafikRenkleri } from "../bilesenler/Grafik";
+import { useEtkinTema } from "../api/ayarlar";
 
 /**
- * Saha haritası.
- *
- * Her müşteri TEK işaretle gösterilir. Önceki sürümde akü ve inverter
- * ayrı noktalara kaydırılıyordu; oysa ikisi aynı adreste duruyor.
- * Yapay kaydırma haritayı kalabalıklaştırıyor ve yanlış konum
- * izlenimi veriyordu.
- *
- * İşaretin rengi o adresteki EN KÖTÜ cihazın durumunu taşır — saha
- * ekibi haritaya bakıp nereye gitmesi gerektiğini görür. Hangi
- * cihazın sorunlu olduğu açılır pencerede listelenir.
+ * Saha haritası. Her müşteri adresi tek işaretle gösterilir; rengi o
+ * adresteki en kötü cihazın durumunu taşır, büyüklüğü cihaz sayısını.
  */
 
-const RENK = {
-  saglikli: "#15803D",
-  uyari:    "#B45309",
-  kritik:   "#B91C1C",
-  notr:     "#94A3B8",
+// CARTO altlıkları anahtar gerektirmez; tema ile birlikte değişir.
+const ALTLIK = {
+  koyu: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+  acik: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
 };
 
 const ONCELIK = { kritik: 3, uyari: 2, saglikli: 1, notr: 0 };
 
 export default function Harita({ gomulu = false, yukseklik }) {
   const git = useNavigate();
+  const tema = useEtkinTema();
+  const RENK = useGrafikRenkleri();
   const [suzgec, setSuzgec] = useState("hepsi");
   const { veri: musteriler, yukleniyor: mY, hata: mH, yenile } = useVeri(musteriListesi);
   const { veri: cihazlar, yukleniyor: cY, hata: cH } = useVeri(cihazListesi);
 
-  if (mY || cY) return <Iskelet yukseklik={yukseklik} />;
+  if (mY || cY) return gomulu ? <div className="h-full animate-pulse bg-panel2/50" /> : <Iskelet yukseklik="h-[60vh]" />;
   if (mH || cH) return <HataKutusu hata={mH || cH} yenile={yenile} />;
 
   // Müşteri başına tek nokta; durum en kötü cihazdan gelir.
@@ -79,15 +75,10 @@ export default function Harita({ gomulu = false, yukseklik }) {
   };
 
   return (
-    <div className={gomulu ? "" : "space-y-4"}>
+    <div className={gomulu ? "h-full" : "space-y-4"}>
       {!gomulu && (
-        <div>
-          <h1 className="text-lg font-semibold">Saha Haritası</h1>
-          <p className="mt-1 text-sm text-soluk">
-            Kurulu sistemler. Her nokta bir müşteri adresini gösterir; renk o
-            adresteki en kötü cihaz durumunu taşır.
-          </p>
-        </div>
+        <SayfaBasligi baslik="Saha haritası"
+          aciklama="Her nokta bir müşteri adresidir; renk o adresteki en kötü cihaz durumunu gösterir." />
       )}
 
       {!gomulu && (
@@ -101,21 +92,17 @@ export default function Harita({ gomulu = false, yukseklik }) {
             <button
               key={s.id}
               onClick={() => setSuzgec(s.id)}
-              className={`border px-3 py-1.5 text-xs transition-colors ${
-                suzgec === s.id
-                  ? "border-metin bg-panel2 text-metin"
-                  : "border-cizgi text-soluk hover:border-soluk hover:text-metin"
-              }`}
+              className={suzgec === s.id ? "cip-aktif" : "cip-pasif"}
             >
-              {s.ad} <span className="ml-1 font-mono text-sonuk">{s.n}</span>
+              {s.ad} <span className="tabular-nums text-sonuk">{s.n}</span>
             </button>
           ))}
         </div>
       )}
 
       <div
-        className="overflow-hidden border border-cizgi bg-panel"
-        style={{ height: yukseklik || "calc(100vh - 230px)", minHeight: 380 }}
+        className={gomulu ? "h-full" : "overflow-hidden rounded-lg border border-cizgi bg-panel"}
+        style={gomulu ? undefined : { height: yukseklik || "calc(100vh - 250px)", minHeight: 380 }}
       >
         <MapContainer
           center={[36.98, 35.55]}
@@ -123,18 +110,12 @@ export default function Harita({ gomulu = false, yukseklik }) {
           style={{ height: "100%", width: "100%" }}
           scrollWheelZoom={false}
         >
-          {/*  Altlık: Esri "World Light Gray" — CARTO'ya göre yol/ilçe
-              ayrımı daha okunaklı ve Türkiye'de detayı daha iyi. Anahtar
-              gerektirmez. Etiketler ayrı bir katman olarak üste bindirilir;
-              böylece işaretler yazıların altında kaybolmaz.  */}
           <TileLayer
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-            attribution="&copy; Esri, HERE, Garmin, &copy; OpenStreetMap katkıcıları"
-            maxZoom={16}
-          />
-          <TileLayer
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
-            maxZoom={16}
+            key={tema}
+            url={ALTLIK[tema] || ALTLIK.koyu}
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            subdomains="abcd"
+            maxZoom={19}
           />
 
           {gorunur.map((n) => {
@@ -149,7 +130,7 @@ export default function Harita({ gomulu = false, yukseklik }) {
                 pathOptions={{
                   color: renk,
                   fillColor: renk,
-                  fillOpacity: n.sorunlu.length ? 0.55 : 0.28,
+                  fillOpacity: n.sorunlu.length ? 0.6 : 0.3,
                   weight: 2,
                 }}
                 eventHandlers={{ click: () => git(`/musteri/${n.musteri.id}`) }}
@@ -175,7 +156,7 @@ export default function Harita({ gomulu = false, yukseklik }) {
                             onClick={() =>
                               git(c.tip === "aku" ? `/aku/${c.id}` : `/inverter/${c.id}`)
                             }
-                            className="flex w-full items-center justify-between gap-3 py-1.5
+                            className="flex w-full items-center justify-between gap-3 px-1 py-1.5
                                        text-left transition-colors hover:bg-panel2"
                           >
                             <span className="font-mono text-xs text-metin">{c.id}</span>
@@ -200,7 +181,7 @@ export default function Harita({ gomulu = false, yukseklik }) {
         </MapContainer>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-sonuk">
+      {!gomulu && <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-sonuk">
         <span className="flex items-center gap-1.5">
           <i className="h-2.5 w-2.5 rounded-full border-2" style={{ borderColor: RENK.saglikli, background: `${RENK.saglikli}45` }} />
           sorun yok
@@ -217,7 +198,7 @@ export default function Harita({ gomulu = false, yukseklik }) {
         {konumsuz.length > 0 && (
           <span className="text-uyari">· {konumsuz.length} müşterinin konumu kayıtlı değil, haritada gösterilmiyor</span>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

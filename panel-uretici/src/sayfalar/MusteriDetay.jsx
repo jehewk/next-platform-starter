@@ -1,15 +1,20 @@
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ChevronLeft, BatteryCharging, Cpu, MapPin, Phone, Calendar, ExternalLink } from "lucide-react";
-import { Kart, Olcum } from "../bilesenler/Kart";
+import { ChevronLeft, BatteryCharging, Cpu, MapPin, Phone, Mail, Calendar, ExternalLink, Pencil } from "lucide-react";
+import { Kart, Olcum, OlcumSeridi, SayfaBasligi, Bos } from "../bilesenler/Kart";
+import MusteriDuzenle from "../bilesenler/MusteriDuzenle";
 import { Rozet, SaglikCubugu } from "../bilesenler/Rozet";
 import { SatirIskelet, Iskelet, HataKutusu } from "../bilesenler/VeriDurumu";
 import { useVeri } from "../api/useVeri";
 import { musteriBul, cihazListesi } from "../api/servis";
-import { saglikDurumu, DURUM_ADI, garantiDurumu, tarihTR } from "../veri/yardimci";
+import { saglikDurumu, garantiDurumu, tarihTR, DURUM_YAZI } from "../veri/yardimci";
+
+const MUSTERI_APP = import.meta.env.VITE_MUSTERI_APP_URL;
 
 export default function MusteriDetay() {
   const { id } = useParams();
-  const { veri: m, yukleniyor: mYukleniyor, hata: mHata } = useVeri(() => musteriBul(id), [id]);
+  const [duzenle, setDuzenle] = useState(false);
+  const { veri: m, yukleniyor: mYukleniyor, hata: mHata, yenile } = useVeri(() => musteriBul(id), [id]);
   const { veri: hepsi, yukleniyor: cYukleniyor, hata: cHata } =
     useVeri(() => cihazListesi({ musteri_id: id }), [id]);
 
@@ -20,49 +25,49 @@ export default function MusteriDetay() {
   const cihazlar = hepsi || [];
   const akuler = cihazlar.filter((c) => c.tip === "aku");
   const invler = cihazlar.filter((c) => c.tip === "inverter");
-  const ort = cihazlar.length
-    ? Math.round(cihazlar.reduce((t, c) => t + (c.saglik || 0), 0) / cihazlar.length) : null;
+  const olculen = cihazlar.filter((c) => c.saglik != null);
+  const ort = olculen.length
+    ? Math.round(olculen.reduce((t, c) => t + c.saglik, 0) / olculen.length) : null;
   const d = saglikDurumu(ort);
   const uretim = invler.reduce((t, c) => t + (c.gunlukKwh || 0), 0);
 
+  const sorunlu = cihazlar.filter((c) => ["arizali", "uyari"].includes(c.durum)).length;
+
   return (
-    <div className="space-y-4">
-      <div>
-        <Link to="/musteriler" className="mb-3 inline-flex items-center gap-1 text-xs text-sonuk hover:text-metin">
-          <ChevronLeft size={13} /> müşteriler
-        </Link>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-semibold">{m.ad}</h1>
-            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-sonuk">
-              <span className="flex items-center gap-1.5"><MapPin size={11} /> {m.adres}, {m.ilce}/{m.il}</span>
-              <span className="flex items-center gap-1.5"><Phone size={11} /> {m.telefon}</span>
-              <span className="flex items-center gap-1.5"><Calendar size={11} /> kurulum {tarihTR(m.kurulum)}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Rozet durum={d} cocuk={DURUM_ADI[cihazlar.find((c) => c.durum === "arizali") ? "arizali" : "aktif"]} />
-            <a
-              href={`${import.meta.env.VITE_MUSTERI_APP_URL}/${m.id}`}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 border border-cizgi px-3 py-1.5
-                         text-xs text-soluk transition-colors hover:border-metin/20 hover:text-metin"
-            >
-              <ExternalLink size={12} strokeWidth={1.75} />
-              Müşteri görünümü
+    <div className="space-y-5">
+      <SayfaBasligi
+        ust={
+          <Link to="/musteriler" className="mb-2 inline-flex items-center gap-1 text-xs text-sonuk hover:text-metin">
+            <ChevronLeft size={13} /> Müşteriler
+          </Link>
+        }
+        baslik={<span className="flex items-center gap-3">{m.ad}
+          <Rozet durum={!sorunlu ? "saglikli" : d === "saglikli" ? "uyari" : d} cocuk={sorunlu ? `${sorunlu} sorun` : "Normal"} /></span>}
+        eylem={<>
+          {MUSTERI_APP && (
+            <a href={`${MUSTERI_APP}/${m.id}`} target="_blank" rel="noreferrer" className="dugme-ikincil">
+              <ExternalLink size={14} /> Müşteri görünümü
             </a>
-          </div>
-        </div>
+          )}
+          <button onClick={() => setDuzenle(true)} className="dugme-ana"><Pencil size={14} /> Düzenle</button>
+        </>}
+      />
+
+      <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-soluk">
+        <span className="flex items-center gap-1.5"><MapPin size={12} /> {m.adres}, {m.ilce}/{m.il}</span>
+        {m.telefon && <span className="flex items-center gap-1.5"><Phone size={12} /> {m.telefon}</span>}
+        {m.email && <span className="flex items-center gap-1.5"><Mail size={12} /> {m.email}</span>}
+        <span className="flex items-center gap-1.5"><Calendar size={12} /> Kurulum {tarihTR(m.kurulum)}</span>
       </div>
 
-      <div className="grid grid-cols-2 border border-cizgi bg-panel md:grid-cols-4">
-        <Olcum etiket="Sistem sağlığı" deger={ort ?? "—"}
-          vurgu={{ saglikli: "text-saglikli", uyari: "text-uyari", kritik: "text-kritik" }[d]} />
+      <OlcumSeridi>
+        <Olcum etiket="Sistem sağlığı" deger={ort ?? "—"} vurgu={DURUM_YAZI[d]} />
         <Olcum etiket="Akü" deger={akuler.length} />
         <Olcum etiket="İnverter" deger={invler.length} />
         <Olcum etiket="Günlük üretim" deger={uretim.toFixed(1)} birim="kWh" />
-      </div>
+      </OlcumSeridi>
+
+      <MusteriDuzenle acik={duzenle} kapat={() => setDuzenle(false)} musteri={m} kaydedildi={yenile} />
 
       {cYukleniyor ? <SatirIskelet satir={2} /> : cHata ? <HataKutusu hata={cHata} /> : (
         <>
@@ -72,7 +77,7 @@ export default function MusteriDetay() {
             cocuk={
               akuler.length === 0
                 ? <Bos metin="Bu müşteride kayıtlı akü yok." />
-                : <div className="divide-y divide-cizgi">
+                : <div className="grid gap-px bg-cizgi md:grid-cols-2">
                     {akuler.map((a) => <CihazKarti key={a.id} c={a} yol={`/aku/${a.id}`} />)}
                   </div>
             }
@@ -83,7 +88,7 @@ export default function MusteriDetay() {
             cocuk={
               invler.length === 0
                 ? <Bos metin="Bu müşteride kayıtlı inverter yok." />
-                : <div className="divide-y divide-cizgi">
+                : <div className="grid gap-px bg-cizgi md:grid-cols-2">
                     {invler.map((v) => <CihazKarti key={v.id} c={v} yol={`/inverter/${v.id}`} />)}
                   </div>
             }
@@ -102,32 +107,29 @@ export default function MusteriDetay() {
  */
 export function CihazKarti({ c, yol }) {
   const d = saglikDurumu(c.saglik);
-  const yazi = { saglikli: "text-saglikli", uyari: "text-uyari", kritik: "text-kritik", notr: "text-sonuk" }[d];
+  const yazi = DURUM_YAZI[d];
   const g = garantiDurumu(c);
   const Ikon = c.tip === "aku" ? BatteryCharging : Cpu;
 
   return (
-    <Link to={yol} className="block bg-panel p-4 transition-colors hover:bg-panel2">
+    <Link to={yol} className="block bg-panel p-4 transition-colors hover:bg-panel2/60">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2.5">
-          {c.tip === "aku" ? (
-            <img src="/gorseller/aku-kucuk.webp" alt="" width={20} height={20}
-                 className="mt-0.5 shrink-0 border border-cizgi bg-white object-contain" />
-          ) : (
-            <Ikon size={16} strokeWidth={1.75} className="mt-0.5 shrink-0 text-sonuk" />
-          )}
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-panel2 ring-1 ring-cizgi">
+            <Ikon size={15} strokeWidth={1.75} className="text-soluk" />
+          </span>
           <div>
             <div className="font-mono text-sm">{c.id}</div>
             <div className="text-xs text-sonuk">{c.model} · parti {c.parti}</div>
           </div>
         </div>
         <div className="text-right">
-          <div className={`font-mono text-xl leading-none ${yazi}`}>{c.saglik ?? "—"}</div>
+          <div className={`text-xl font-semibold leading-none tabular-nums ${yazi}`}>{c.saglik ?? "—"}</div>
           <div className="mt-0.5 text-xs text-sonuk">sağlık</div>
         </div>
       </div>
 
-      {c.saglik != null && <div className="mt-3"><SaglikCubugu deger={c.saglik} durum={d} /></div>}
+      {c.saglik != null && <div className="mt-3"><SaglikCubugu deger={c.saglik} durum={d} ince /></div>}
 
       <div className="mt-3 flex items-center justify-between border-t border-cizgi pt-2.5 text-xs">
         <span className="text-sonuk">garanti</span>
@@ -137,10 +139,6 @@ export function CihazKarti({ c, yol }) {
       </div>
     </Link>
   );
-}
-
-function Bos({ metin }) {
-  return <div className="px-5 py-10 text-center"><p className="text-sm text-soluk">{metin}</p></div>;
 }
 
 function Bulunamadi() {

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Kart, Olcum } from "../bilesenler/Kart";
+import { Kart, Olcum, OlcumSeridi, SayfaBasligi } from "../bilesenler/Kart";
 import { Rozet } from "../bilesenler/Rozet";
 import { SatirIskelet, HataKutusu } from "../bilesenler/VeriDurumu";
 import { useVeri } from "../api/useVeri";
 import { mudahaleKuyrugu, musteriListesi, kaynakAnalizi } from "../api/servis";
-import { saglikDurumu, sureMetni, KAYNAK_ADI, tarihTR } from "../veri/yardimci";
+import { saglikDurumu, sureMetni, KAYNAK_ADI } from "../veri/yardimci";
 
 /**
  * Kaynak analizi her cihaz için ayrı bir hesaplamadır (backend'de
@@ -40,21 +40,17 @@ export default function Arizalar() {
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold">Arızalar</h1>
-        <p className="mt-1 text-sm text-soluk">
-          Öngörülen ve gerçekleşen arızalar, kaynak analiziyle birlikte.
-        </p>
-      </div>
+    <div className="space-y-5">
+      <SayfaBasligi baslik="Arızalar"
+        aciklama={<>Öngörülen ve gerçekleşen arızalar, kaynak analiziyle birlikte.</>} />
 
-      <div className="grid grid-cols-2 border border-cizgi bg-panel md:grid-cols-4">
+      <OlcumSeridi sutun={4}>
         <Olcum etiket="Öngörülen" deger={isler?.length ?? "—"}
           vurgu={isler?.length ? "text-uyari" : "text-metin"} />
         <Olcum etiket="İncelenen" deger={kaynakli.length} />
         <Olcum etiket="Üretim kaynaklı" deger={sayim.uretim} />
         <Olcum etiket="Kullanım kaynaklı" deger={sayim.kullanim} />
-      </div>
+      </OlcumSeridi>
 
       {yukleniyor ? <SatirIskelet satir={4} /> : hata ? <HataKutusu hata={hata} yenile={yenile} /> : (
         <Kart
@@ -74,7 +70,7 @@ export default function Arizalar() {
                     const musteri = musteriMap[is.musteriId];
                     return (
                       <Link key={is.id} to={yol}
-                        className="block border-b border-cizgi px-4 py-3.5 transition-colors last:border-b-0 hover:bg-panel2">
+                        className="block border-b border-cizgi px-4 py-3.5 transition-colors last:border-b-0 hover:bg-panel2/60">
                         <div className="flex items-start gap-4">
                           <span className="mt-0.5 w-6 shrink-0 text-xs text-sonuk">
                             {String(i + 1).padStart(2, "0")}

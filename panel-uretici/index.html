@@ -1,15 +1,24 @@
 <!doctype html>
-<html lang="tr">
+<html lang="tr" data-tema="koyu">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#09090B" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Dennis Enerji — Üretici Paneli</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- Inter: gercek B2B urunlerin (Linear, Vercel, Stripe, GitHub) buyuk
-         cogunlugunun kullandigi font. IBM Plex Mono yalnizca cihaz/seri
-         numaralari icin taninabilir bicimde kalir. -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+      // Tema, sayfa çizilmeden önce uygulanır; açık temada koyu yanıp sönme olmaz.
+      try {
+        var a = JSON.parse(localStorage.getItem("de_ayarlar") || "{}");
+        var t = a.tema || "koyu";
+        if (t === "sistem") t = matchMedia("(prefers-color-scheme: light)").matches ? "acik" : "koyu";
+        document.documentElement.dataset.tema = t;
+        document.documentElement.dataset.yogunluk = a.yogunluk || "rahat";
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

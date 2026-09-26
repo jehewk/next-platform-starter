@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Kart } from "../bilesenler/Kart";
+import { Kart, SayfaBasligi, Bos } from "../bilesenler/Kart";
 import { SatirIskelet, HataKutusu } from "../bilesenler/VeriDurumu";
 import { useVeri } from "../api/useVeri";
 import { basvuruListesi, basvuruKarar } from "../api/servis";
@@ -36,16 +36,13 @@ export default function Basvurular() {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold">Kayıt Başvuruları</h1>
-        <p className="mt-1 text-sm text-soluk">
-          Müşteri uygulamasından gelen yeni kayıtlar. Onaylanana kadar giriş yapamazlar.
-        </p>
-      </div>
+    <div className="space-y-5">
+      <SayfaBasligi baslik="Kayıt başvuruları"
+        aciklama="Müşteri uygulamasından gelen yeni kayıtlar. Onaylanana kadar giriş yapamazlar." />
 
       {sonuc && (
-        <p className={`text-sm ${sonuc.tur === "iyi" ? "text-saglikli" : "text-kritik"}`}>{sonuc.metin}</p>
+        <p role="status" className={`rounded-md border px-3 py-2 text-sm ${sonuc.tur === "iyi"
+          ? "border-saglikli/30 bg-saglikli/10 text-saglikli" : "border-kritik/30 bg-kritik/10 text-kritik"}`}>{sonuc.metin}</p>
       )}
 
       {yukleniyor ? (
@@ -54,13 +51,11 @@ export default function Basvurular() {
         <HataKutusu hata={hata} yenile={yenile} />
       ) : liste.length === 0 ? (
         <Kart cocuk={
-          <div className="px-5 py-14 text-center">
-            <p className="text-sm text-soluk">Bekleyen başvuru yok.</p>
-          </div>
+          <Bos metin="Bekleyen başvuru yok." alt="Yeni kayıtlar burada görünecek." />
         } />
       ) : (
         <Kart
-          baslik="Bekleyen Başvurular"
+          baslik="Bekleyen başvurular"
           ustBilgi={<span className="text-xs text-soluk">{liste.length} kayıt</span>}
           cocuk={
             <div className="divide-y divide-cizgi">
@@ -85,15 +80,13 @@ export default function Basvurular() {
                       <button
                         onClick={() => karar(b.id, b.ad, "onay")}
                         disabled={islemde === b.id}
-                        className="border border-saglikli/40 px-3 py-1.5 text-xs text-saglikli
-                                   transition-colors hover:bg-saglikli/5 disabled:opacity-40">
+                        className="dugme-ana text-xs">
                         {islemde === b.id ? "…" : "Onayla"}
                       </button>
                       <button
                         onClick={() => karar(b.id, b.ad, "ret")}
                         disabled={islemde === b.id}
-                        className="border border-cizgi px-3 py-1.5 text-xs text-soluk
-                                   transition-colors hover:border-kritik/40 hover:text-kritik disabled:opacity-40">
+                        className="dugme-ikincil text-xs hover:text-kritik">
                         Reddet
                       </button>
                     </div>

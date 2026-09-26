@@ -1,5 +1,5 @@
 import { api } from "./istemci";
-import { mekanizmaAdi } from "../veri/yardimci";
+import { mekanizmaAdi, ESIK } from "../veri/yardimci";
 
 /**
  * Backend ↔ frontend adaptör katmanı.
@@ -30,6 +30,8 @@ function cihazUyarla(c) {
     gunlukKwh: c.gunluk_kwh ?? null,
     oncelikli: c.oncelikli || null,   // fizik motorunun öne çıkardığı mekanizma
     ozet: c.ozet || "",
+    kalanSaat: c.kalan_gun != null ? Math.round(c.kalan_gun * 24) : null,
+    guven: c.guven ?? null,
   };
 }
 
@@ -47,7 +49,7 @@ export async function cihazBul(cihazId) {
   // GenelBakis kuyruğu ve kart bileşenleri "tahmin" adında tek bir
   // nesne bekler; backend bu bilgiyi iki ayrı yerden verir
   // (son_olcum.oncelikli_mekanizma + kalan_sure). Burada birleştirilir.
-  const saglikDusuk = cihaz.saglik != null && Number(cihaz.saglik) < 85;
+  const saglikDusuk = cihaz.saglik != null && Number(cihaz.saglik) < ESIK.uyari;
   const tahmin = saglikDusuk && son_olcum?.oncelikli_mekanizma
     ? {
         mekanizma: son_olcum.oncelikli_mekanizma,
@@ -81,6 +83,7 @@ export function akuDetayUyarla(cihaz) {
       sicakliklar: [], sarjMos: null, desarjMos: null, dengeleme: [],
       hatalar: [], egilim: [], akim: null,
       kalanKapasiteAh: null, toplamKapasiteAh: cihaz.kapasiteAh ?? null,
+      paketGerilim: null, sicaklik: null, cevrim: null,
     };
   }
 
@@ -103,17 +106,25 @@ export function akuDetayUyarla(cihaz) {
     desarjMos: o.desarj_mos ?? null,
     dengeleme: o.dengeleme_hucreleri || [],
     hatalar: (o.hata_kodlari || []).map((h) => ({
-      kod: h.kod || h, mesaj: h.mesaj || cihaz.ozetSonEkstra || "", seviye: h.seviye || "uyari",
+      kod: h.kod || h, mesaj: h.mesaj || "", seviye: h.seviye || "uyari",
     })),
     egilim: cihaz.gecmis || [],
     akim: o.akim ?? null,
     kalanKapasiteAh: o.soc != null && cihaz.kapasiteAh
       ? Number(((o.soc / 100) * cihaz.kapasiteAh).toFixed(1)) : null,
     toplamKapasiteAh: cihaz.kapasiteAh ?? null,
+    // Paket gerilimi hücrelerin toplamıdır; sıcaklık bağlı sensörlerin en yükseği.
+    paketGerilim: o.paket_gerilim ?? (gerilimler.length
+      ? Number(gerilimler.reduce((a, b) => a + b, 0).toFixed(2)) : null),
+    sicaklik: (() => {
+      const bagli = (o.sicakliklar || []).filter((t) => t != null && t > -40);
+      return bagli.length ? Math.max(...bagli) : null;
+    })(),
+    cevrim: o.cevrim ?? null,
   };
 }
 
-/** Geçmiş ölçümlerden hücre farkı eğilimini (son 30 gün, günlük) çıkarır. */
+/** Geçmiş ölçümlerden günlük hücre gerilim farkını (ortalama, mV) çıkarır. */
 export async function cihazGecmisi(cihazId, gunSayisi = 30) {
   const { olcumler } = await api.get(
     `/de/cihaz/gecmis?cihaz_id=${encodeURIComponent(cihazId)}&gun=${gunSayisi}`
@@ -133,9 +144,14 @@ export async function cihazGecmisi(cihazId, gunSayisi = 30) {
   const ilkGun = sirali[0][1];
   const ilkDeger = ilkGun.reduce((a, b) => a + b, 0) / ilkGun.length;
 
-  return sirali.map(([, degerler], i) => {
+  return sirali.map(([gun, degerler], i) => {
     const ort = degerler.reduce((a, b) => a + b, 0) / degerler.length;
-    return { no: i + 1, degisim: Number((((ilkDeger - ort) / ilkDeger) * 100).toFixed(1)) };
+    return {
+      no: i + 1,
+      gun,
+      farkMv: Math.round(ort),
+      degisim: Number((((ilkDeger - ort) / ilkDeger) * 100).toFixed(1)),
+    };
   });
 }
 
@@ -157,6 +173,11 @@ export async function musteriListesi() {
 export async function musteriBul(musteriId) {
   const hepsi = await musteriListesi();
   return hepsi.find((m) => m.id === musteriId) || null;
+}
+
+/** Müşteri kaydını düzenler. Yalnızca gönderilen alanlar değişir. */
+export async function musteriGuncelle(musteriId, alanlar) {
+  return api.post("/de/musteri/guncelle", { musteri_id: musteriId, ...alanlar });
 }
 
 export async function musteriOlustur(veri) {
@@ -181,7 +202,7 @@ export async function mudahaleKuyrugu() {
   const musteriMap = Object.fromEntries(musteriler.map((m) => [m.id, m.ad]));
 
   return cihazlar
-    .filter((c) => c.saglik != null && c.saglik < 85)
+    .filter((c) => c.saglik != null && c.saglik < ESIK.uyari)
     .sort((a, b) => a.saglik - b.saglik)
     .map((c) => ({
       id: c.id, tip: c.tip, musteriId: c.musteriId,

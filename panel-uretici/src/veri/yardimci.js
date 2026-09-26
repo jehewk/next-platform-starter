@@ -16,8 +16,32 @@ export const durumRengi = (durum) => ({
   depoda: "notr", sevkte: "bilgi", uretildi: "notr",
 }[durum] || "notr");
 
+// Sağlık eşikleri Ayarlar sayfasından değiştirilebilir (bkz. api/ayarlar.jsx).
+export const ESIK = { uyari: 85, kritik: 65 };
+export function esikAyarla(uyari, kritik) {
+  ESIK.uyari = Number(uyari) || 85;
+  ESIK.kritik = Number(kritik) || 65;
+}
+
 export const saglikDurumu = (s) =>
-  s == null ? "notr" : s >= 85 ? "saglikli" : s >= 65 ? "uyari" : "kritik";
+  s == null ? "notr" : s >= ESIK.uyari ? "saglikli" : s >= ESIK.kritik ? "uyari" : "kritik";
+
+/** Durum anahtarı → metin rengi sınıfı. */
+export const DURUM_YAZI = {
+  saglikli: "text-saglikli", uyari: "text-uyari", kritik: "text-kritik",
+  bilgi: "text-bilgi", notr: "text-sonuk",
+};
+
+/** "3 dk önce", "2 sa önce" gibi göreli zaman. */
+export function onceMetni(iso) {
+  if (!iso) return "—";
+  const fark = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (isNaN(fark)) return "—";
+  if (fark < 60) return "az önce";
+  if (fark < 3600) return `${Math.floor(fark / 60)} dk önce`;
+  if (fark < 86400) return `${Math.floor(fark / 3600)} sa önce`;
+  return `${Math.floor(fark / 86400)} gün önce`;
+}
 
 export const KAYNAK_ADI = {
   uretim: "Üretim kaynaklı", kullanim: "Kullanım kaynaklı",

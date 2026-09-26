@@ -25,12 +25,23 @@ export async function girisYap(eposta, sifre, kaptchaToken, kaptchaCevap) {
 }
 
 export function oturumOku() {
-  const ham = sessionStorage.getItem(ANAHTAR);
-  return ham ? JSON.parse(ham) : null;
+  try {
+    const ham = sessionStorage.getItem(ANAHTAR);
+    return ham ? JSON.parse(ham) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function oturumSil() {
   sessionStorage.removeItem(ANAHTAR);
+}
+
+/** Backend olmadan demo verisiyle oturum açar (bkz. api/demo.js). */
+export function demoGiris() {
+  const kayit = { demo: true, eposta: "demo@dennisenerji.com" };
+  sessionStorage.setItem(ANAHTAR, JSON.stringify(kayit));
+  return kayit;
 }
 
 /** Erişim tokenının süresi dolduysa yenileme tokenıyla tazeler. */

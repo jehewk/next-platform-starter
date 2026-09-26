@@ -27,12 +27,12 @@ export default class HataSiniri extends Component {
   render() {
     if (this.state.hata) {
       return (
-        <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-white px-6 text-center">
+        <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-zemin px-6 text-center">
           <p className="text-sm font-medium text-metin">Sayfa yüklenirken bir sorun oluştu.</p>
           <p className="max-w-md text-xs text-soluk">{this.state.hata.message}</p>
           <button
             onClick={() => window.location.reload()}
-            className="mt-2 border border-cizgi px-4 py-2 text-xs transition-colors hover:border-metin/30"
+            className="dugme-ikincil mt-2 text-xs"
           >
             Sayfayı yenile
           </button>

@@ -1,4 +1,5 @@
 import { oturumOku, tokenYenile, oturumSil } from "./oturum";
+import { demoIstek } from "./demo";
 
 /**
  * Backend ile tek temas noktası.
@@ -21,6 +22,11 @@ export class ApiHatasi extends Error {
 async function istek(yol, secenekler = {}, tekrarDenendi = false) {
   const oturum = oturumOku();
   if (!oturum) throw new ApiHatasi("Oturum bulunamadı", 401);
+
+  if (oturum.demo) {
+    try { return await demoIstek(yol, secenekler); }
+    catch (e) { throw new ApiHatasi(e.message, e.durum ?? 500); }
+  }
 
   let govde;
   try {

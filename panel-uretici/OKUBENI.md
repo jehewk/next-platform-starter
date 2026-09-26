@@ -1,7 +1,8 @@
-# Dennis Energy — Üretici Paneli
+# Dennis Enerji — Üretici Paneli
 
 Akü ve inverter üretimi için izleme, arıza kaynağı analizi ve ürün takip paneli.
-React + Vite ile yazılmıştır.
+React + Vite + Tailwind ile yazılmıştır. Varsayılan tema koyudur; açık tema
+Ayarlar'dan seçilir.
 
 ## Çalıştırma
 
@@ -9,9 +10,15 @@ Node.js kurulu olmalı (nodejs.org → LTS).
 
 ```bash
 npm install      # bağımlılıkları kur (bir kez)
+cp .env.example .env
 npm run dev      # geliştirme sunucusu → http://localhost:5173
 npm run build    # dağıtım için derle → dist/
+npm run lint     # oxlint
 ```
+
+Backend'e erişim yoksa giriş ekranındaki **Demo verisiyle incele** düğmesiyle
+panel örnek veriyle açılır. Düğme `npm run dev` sırasında her zaman, derlenmiş
+sürümde yalnızca `VITE_DEMO=1` ise görünür.
 
 Windows'ta `npm` çalışmazsa `npm.cmd` kullanın veya:
 `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
@@ -20,47 +27,51 @@ Windows'ta `npm` çalışmazsa `npm.cmd` kullanın veya:
 
 | Bölüm | İçerik |
 |---|---|
-| Genel İzleme | Tüm ürünlerin durumu, harita, müdahale kuyruğu, müşteri özetleri |
-| Harita | Kurulu akü ve inverterler; akü dolu daire, inverter kesikli daire |
-| Müşteriler | Kurulu sistemler; her müşterinin aküleri ve inverterleri ayrı |
-| Aküler | Üretilen tüm aküler — sahada, depoda, sevkte |
-| İnverterler | Üretilen tüm inverterler |
+| Genel Bakış | KPI kartları, saha haritası, müdahale kuyruğu, ürün durumu, parti arıza oranı, müşteriler |
+| Harita | Kurulu sistemler; renk o adresteki en kötü cihazın durumu |
 | Arızalar | Öngörülen arızalar + kaynak analizi (üretim / kullanım / dış etken) |
+| Aküler / İnverterler | Üretilen tüm cihazlar; filtre ve arama |
+| Üretim | Parti bazında üretilen/sevk/depo/kurulu ve arıza oranı |
+| Müşteriler | Kurulu sistemler; müşteri detayında **Düzenle** ile bilgi güncelleme |
+| Başvurular | Müşteri uygulamasından gelen kayıtları onaylama / reddetme |
 | Garanti | Garanti süreleri ve talepler |
-| Üretim | Parti bazında üretilen/sevk/depo/kurulu, arıza oranı, karekod akışı |
-| Asistan | Sistem verisine dayalı soru-cevap |
+| Sohbet | Sistem verisine soru-cevap; konuşma geçmişi, yeniden adlandırma, silme |
+| Ayarlar | Profil, tema, tablo yoğunluğu, sağlık eşikleri, bildirim tercihleri |
+
+Kısayollar: **⌘K / Ctrl+K** arama (sayfa, seri no, parti, müşteri),
+**⌘J / Ctrl+J** her sayfadan açılan sohbet çekmecesi.
 
 ## Klasör yapısı
 
 ```
 src/
   api/
-    oturum.js       Cognito giriş, token saklama ve yenileme
-    istemci.js      API çağrıları — token ekler, 401'de yeniler
-  veri/
-    ornekVeri.js    Geçici örnek veri. Gerçek uç noktalar hazır olunca
-                    yalnızca bu dosya değişir; ekranlar aynı kalır.
-  bilesenler/       Kenar menü, kart, rozet
+    istemci.js      Backend çağrıları — token ekler, 401'de yeniler
+    oturum.js       Giriş, token saklama/yenileme, demo oturumu
+    servis.js       Backend (snake_case) ↔ arayüz (camelCase) adaptörü
+    demo.js         Demo veri kaynağı (backend ile aynı yanıt şekli)
+    asistan.js      Sohbet yanıtları (uzak uç ya da yerel motor)
+    sohbetler.jsx   Sohbet geçmişi (localStorage)
+    ayarlar.jsx     Kullanıcı tercihleri (localStorage)
+    useVeri.js      {veri, yukleniyor, hata, yenile} kancası
+  bilesenler/       Kenar menü, üst çubuk, arama paleti, kart, rozet, modal, sohbet
   sayfalar/         Yukarıdaki bölümler
+  veri/yardimci.js  Saf yardımcılar (durum adları, eşikler, tarih biçimleri)
 ```
 
-## Gerçek veriye geçiş
+## Backend notları
 
-`src/veri/ornekVeri.js` şu an sabit veri döndürür. Backend hazır olduğunda
-bu dosyadaki fonksiyonlar `src/api/istemci.js` çağrılarıyla değiştirilir:
-
-```js
-import { getir } from "../api/istemci";
-export const cihazlariGetir = () => getir("/cihaz/liste");
-```
-
-## Asistan hakkında
-
-Asistan şu an sistem verisi üzerinde çalışan yerel bir yanıt motoru kullanır
-(`yanitla` fonksiyonu, Asistan.jsx içinde). Serbest konuşma için bir dil modeli
-bağlantısı gerekir; bu bağlantı API anahtarı sunucu tarafında tutulacak şekilde
-yapılandırılmalıdır — anahtar tarayıcıya konmamalıdır.
+- **Müşteri düzenleme** `POST /de/musteri/guncelle` çağırır
+  (`{musteri_id, ad, tip, il, ilce, adres, telefon, email, lat, lng}`).
+  Bu uç backend'de yoksa eklenmelidir; yoksa diyalog sunucu hatasını gösterir.
+- **Sohbet**: `VITE_ASISTAN_YOLU` tanımlıysa sorular oraya gönderilir
+  (`POST {soru, gecmis} → {yanit}`); dil modeli API anahtarı sunucuda kalmalıdır.
+  Tanımlı değilse sistem verisi üzerinde çalışan yerel motor yanıtlar.
+- Cihaz listesi `kalan_gun` ve `guven` alanlarını gönderirse müdahale
+  kuyruğunda kalan süre de görünür.
 
 ## Renk kuralı
 
-Renk anlam taşır: yeşil aktif, sarı izlemede, kırmızı arızalı, gri depoda.
+Renk anlam taşır: yeşil sağlıklı, sarı izlemede, kırmızı kritik/arızalı,
+mavi sevkte, gri depoda/veri yok. Eşikler Ayarlar → Sağlık eşikleri'nden
+değiştirilir (varsayılan 85 / 65).

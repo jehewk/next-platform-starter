@@ -1,4 +1,4 @@
-import { Kart, Olcum } from "../bilesenler/Kart";
+import { Kart, Olcum, OlcumSeridi, SayfaBasligi } from "../bilesenler/Kart";
 import { Rozet } from "../bilesenler/Rozet";
 import { Link } from "react-router-dom";
 import { SatirIskelet, HataKutusu } from "../bilesenler/VeriDurumu";
@@ -25,21 +25,16 @@ export default function Garanti() {
   const dolmus = sahada.length - gecerli.length;
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold">Garanti</h1>
-        <p className="mt-1 text-sm text-soluk">
-          Garanti süreleri ve talepler. Süre kurulum değil üretim tarihinden başlar
-          ({GARANTI_SURESI_AY.aku} ay).
-        </p>
-      </div>
+    <div className="space-y-5">
+      <SayfaBasligi baslik="Garanti"
+        aciklama={<>Garanti süreleri ve talepler. Süre kurulum değil üretim tarihinden başlar ({GARANTI_SURESI_AY.aku} ay).</>} />
 
-      <div className="grid grid-cols-2 border border-cizgi bg-panel md:grid-cols-4">
+      <OlcumSeridi sutun={4}>
         <Olcum etiket="Kapsamdaki cihaz" deger={gecerli.length} />
         <Olcum etiket="Süresi dolan" deger={dolmus} />
         <Olcum etiket="6 aydan az kalan" deger={yakin.length} vurgu={yakin.length ? "text-uyari" : "text-metin"} />
         <Olcum etiket="Açık talep" deger={(talepler || []).filter((t) => t.durum === "inceleniyor").length} />
-      </div>
+      </OlcumSeridi>
 
       {tYukleniyor ? <SatirIskelet satir={4} /> : tHata ? <HataKutusu hata={tHata} yenile={tYenile} /> : (
         <Kart
@@ -50,14 +45,14 @@ export default function Garanti() {
               <div className="px-5 py-12 text-center"><p className="text-sm text-soluk">Kayıtlı talep yok.</p></div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[720px] text-sm">
+                <table className="tablo w-full min-w-[720px] text-sm">
                   <thead>
-                    <tr className="border-b border-cizgi text-xs font-medium text-sonuk">
-                      <th className="px-4 py-2.5 text-left font-normal">Talep</th>
-                      <th className="px-4 py-2.5 text-left font-normal">Cihaz</th>
-                      <th className="px-4 py-2.5 text-left font-normal">Müşteri</th>
-                      <th className="px-4 py-2.5 text-left font-normal">Kaynak</th>
-                      <th className="px-4 py-2.5 text-left font-normal">Durum</th>
+                    <tr>
+                      <th>Talep</th>
+                      <th>Cihaz</th>
+                      <th>Müşteri</th>
+                      <th>Kaynak</th>
+                      <th>Durum</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -66,7 +61,7 @@ export default function Garanti() {
                       const m = musteriMap[t.musteriId];
                       const d = DURUM[t.durum] || DURUM.inceleniyor;
                       return (
-                        <tr key={t.id} className="border-b border-cizgi last:border-b-0 hover:bg-panel2">
+                        <tr key={t.id} >
                           <td className="px-4 py-3">
                             <div className="font-mono text-xs">{t.id}</div>
                             <div className="text-xs text-sonuk">{tarihTR(t.tarih)}</div>
@@ -100,14 +95,14 @@ export default function Garanti() {
           ustBilgi={<span className="text-xs text-soluk">sahadaki {sahada.length} cihaz</span>}
           cocuk={
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[680px] text-sm">
+              <table className="tablo w-full min-w-[680px] text-sm">
                 <thead>
-                  <tr className="border-b border-cizgi text-xs font-medium text-sonuk">
-                    <th className="px-4 py-2.5 text-left font-normal">Cihaz</th>
-                    <th className="px-4 py-2.5 text-left font-normal">Müşteri</th>
-                    <th className="px-4 py-2.5 text-left font-normal">Üretim</th>
-                    <th className="px-4 py-2.5 text-left font-normal">Bitiş</th>
-                    <th className="px-4 py-2.5 text-right font-normal">Kalan</th>
+                  <tr>
+                    <th>Cihaz</th>
+                    <th>Müşteri</th>
+                    <th>Üretim</th>
+                    <th>Bitiş</th>
+                    <th className="!text-right">Kalan</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -118,7 +113,7 @@ export default function Garanti() {
                       const m = musteriMap[c.musteriId];
                       const az = g.kalanGun < 180;
                       return (
-                        <tr key={c.id} className="border-b border-cizgi last:border-b-0 hover:bg-panel2">
+                        <tr key={c.id} >
                           <td className="px-4 py-2.5">
                             <Link to={c.tip === "aku" ? `/aku/${c.id}` : `/inverter/${c.id}`}
                               className="font-mono text-xs hover:underline">{c.id}</Link>

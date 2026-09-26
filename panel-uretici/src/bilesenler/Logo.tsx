@@ -56,17 +56,19 @@ export default function Logo({
       aria-label="Dennis Energy"
     >
       {zeminli && (
-        <rect x="0" y="0" width="206" height="210" rx="50" fill={zeminRenk} />
+        <rect x="0" y="0" width="206" height="210" rx="50" style={{ fill: zeminRenk }} />
       )}
+      <g transform={zeminli ? "translate(26 0)" : undefined}>
       {LOGO_PARCALARI.map((p) =>
         parcaliMi ? (
           <g key={p.ad} data-parca={p.ad} data-yon={p.yon}>
-            <path d={p.d} fill={renk} />
+            <path d={p.d} style={{ fill: renk }} />
           </g>
         ) : (
-          <path key={p.ad} d={p.d} fill={renk} />
+          <path key={p.ad} d={p.d} style={{ fill: renk }} />
         )
       )}
+      </g>
     </svg>
   );
 }
