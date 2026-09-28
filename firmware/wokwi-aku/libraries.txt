@@ -1,0 +1,2 @@
+# Wokwi kütüphane listesi
+ArduinoJson
