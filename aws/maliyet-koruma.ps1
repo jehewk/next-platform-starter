@@ -27,13 +27,13 @@
 .EXAMPLE
   .\maliyet-koruma.ps1                                  # rapor (değişiklik yok)
   .\maliyet-koruma.ps1 -Uygula                          # uygula
-  .\maliyet-koruma.ps1 -CihazSayisi 500 -AylikButce 50 -Uygula
+  .\maliyet-koruma.ps1 -CihazSayisi 500 -AylikButce 800 -Uygula
 #>
 [CmdletBinding()]
 param(
   [ValidateRange(1, 100000)][int]$CihazSayisi = 100,
   [ValidateRange(1, 3600)][int]$GonderimSaniye = 20,
-  [ValidateRange(1, 100000)][decimal]$AylikButce = 20,
+  [ValidateRange(1, 100000)][decimal]$AylikButce = 500,
   [string]$Eposta,
   [ValidateRange(0, 3650)][int]$OlcumSaklamaGun = 180,
   [ValidateSet(1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365)][int]$GunlukSaklamaGun = 30,

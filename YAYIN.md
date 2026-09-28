@@ -142,7 +142,7 @@ Sınırlar cihaz sayısı ve gönderim aralığından, cihaz verisi reddedilmesi
 paylı hesaplanır. Cihaz sayısı arttıkça tekrar çalıştırın:
 
 ```powershell
-.\maliyet-koruma.ps1 -CihazSayisi 100 -GonderimSaniye 20 -AylikButce 20 -Uygula
+.\maliyet-koruma.ps1 -CihazSayisi 100 -GonderimSaniye 20 -AylikButce 500 -Uygula
 ```
 
 Ölçüm TTL'i kapatmak: `-OlcumSaklamaGun 0`. TTL yalnızca bundan sonra yazılan
