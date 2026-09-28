@@ -36,12 +36,25 @@ function Cagir {
     $cikti = & $AWS_CLI @A @ek 2> $hataDosyasi
     $kod = $LASTEXITCODE
   } finally { $ErrorActionPreference = $eski }
-  $hata = (Get-Content $hataDosyasi -Raw -ErrorAction SilentlyContinue)
+  $satirlar = @(Get-Content $hataDosyasi -ErrorAction SilentlyContinue)
   Remove-Item $hataDosyasi -ErrorAction SilentlyContinue
-  if ($kod -ne 0) { throw "aws $($A[0..1] -join ' ') başarısız: $hata" }
+  if ($kod -ne 0) { throw "aws $($A[0..1] -join ' ') başarısız: $(AwsHatasi $satirlar)" }
   $metin = ($cikti | Out-String).Trim()
   if (-not $metin) { return $null }
   try { return ($metin | ConvertFrom-Json) } catch { return $metin }
+}
+
+# Windows PowerShell 5.1, aws'nin stderr'ini kendi hata biçimine sarar ve satırları
+# konsol genişliğinde keser ("veri" / "fied"). Yalnızca AWS'nin mesajı alınır.
+function AwsHatasi($satirlar) {
+  $i = -1
+  for ($k = 0; $k -lt $satirlar.Count; $k++) {
+    if ($satirlar[$k] -match 'An error occurred|\[ERROR\]|aws: error|Unknown options|Could not connect|Unable to locate credentials') { $i = $k; break }
+  }
+  if ($i -lt 0) { return (($satirlar | Where-Object { "$_".Trim() }) -join ' ') }
+  $metin = ""
+  for ($k = $i; $k -lt $satirlar.Count -and "$($satirlar[$k])".Trim(); $k++) { $metin += $satirlar[$k] }
+  return ($metin -replace '^.*?(An error occurred)', '$1').Trim()
 }
 
 # Başarısızlığı istisna yerine $null olarak döndürür (var mı / yok mu sorguları için).
@@ -51,9 +64,10 @@ function Dene {
 }
 
 # JSON'u geçici dosyaya yazar (Windows'ta tırnak kaçışı sorunlarını önler).
+# -InputObject: boru hattı tek elemanlı diziyi nesneye çevirirdi.
 function JsonDosyasi($nesne) {
   $yol = [IO.Path]::GetTempFileName()
-  $metin = if ($nesne -is [string]) { $nesne } else { $nesne | ConvertTo-Json -Depth 20 -Compress }
+  $metin = if ($nesne -is [string]) { $nesne } else { ConvertTo-Json -InputObject $nesne -Depth 20 -Compress }
   [IO.File]::WriteAllText($yol, $metin, (New-Object Text.UTF8Encoding($false)))
   return $yol
 }
@@ -71,6 +85,43 @@ function ZipOlustur($klasor, $hedef) {
       [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $f.FullName, $ad) | Out-Null
     }
   } finally { $zip.Dispose() }
+}
+
+# ── AWS Amplify Hosting ─────────────────────────────────────────────────
+# CloudFront hesabı doğrulanmamış hesaplarda (AccessDenied: "must be verified")
+# HTTPS'li yayın için yedek yol. Uygulama "dennis-<ad>", dal "main".
+$AMPLIFY_SPA_KURALI = @(@{
+  source = '</^[^.]+$|\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp|webmanifest)$)([^.]+$)/>'
+  target = "/index.html"; status = "200" })
+
+function AmplifyUygulamasi($ad) {
+  $var = (Cagir amplify list-apps).apps | Where-Object { $_.name -eq $ad } | Select-Object -First 1
+  if ($var) { $app = $var }
+  else {
+    $kural = JsonDosyasi $AMPLIFY_SPA_KURALI
+    $app = (Cagir amplify create-app --name $ad --platform WEB --custom-rules "file://$kural").app
+  }
+  if (-not (Dene amplify get-branch --app-id $app.appId --branch-name main)) {
+    Cagir amplify create-branch --app-id $app.appId --branch-name main --stage PRODUCTION | Out-Null
+  }
+  return $app
+}
+
+function AmplifyYayinla($appId, $dist) {
+  $zip = Join-Path ([IO.Path]::GetTempPath()) ("de-amplify-" + [guid]::NewGuid().ToString("N").Substring(0, 8) + ".zip")
+  ZipOlustur $dist $zip
+  $d = Cagir amplify create-deployment --app-id $appId --branch-name main
+  Invoke-WebRequest -Method Put -Uri $d.zipUploadUrl -InFile $zip -ContentType "application/zip" -UseBasicParsing | Out-Null
+  Remove-Item $zip -ErrorAction SilentlyContinue
+  Cagir amplify start-deployment --app-id $appId --branch-name main --job-id $d.jobId | Out-Null
+  $son = (Get-Date).AddMinutes(10)
+  do {
+    Start-Sleep -Seconds 5
+    $durum = (Cagir amplify get-job --app-id $appId --branch-name main --job-id $d.jobId).job.summary.status
+    if ($durum -eq "SUCCEED") { return }
+    if ($durum -in @("FAILED", "CANCELLED")) { throw "Amplify yayını başarısız ($durum). Amplify konsolunda iş $($d.jobId) günlüğüne bakın." }
+  } while ((Get-Date) -lt $son)
+  throw "Amplify yayını 10 dakikada bitmedi; Amplify konsolundan durumu kontrol edin."
 }
 
 function Adim($metin)  { Write-Host "`n▶ $metin" -ForegroundColor Cyan }

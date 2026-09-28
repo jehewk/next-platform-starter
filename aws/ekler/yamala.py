@@ -5,7 +5,8 @@
 Çıkış kodları:
     0  yama uygulandı (çıktı yazıldı)
     3  uç zaten var — değişiklik gerekmiyor (çıktı yazılmaz)
-    1  dosya beklenen yapıda değil — HİÇBİR ŞEY yazılmaz
+    4  dosya beklenen yapıda değil — HİÇBİR ŞEY yazılmaz
+    1  beklenmeyen hata — HİÇBİR ŞEY yazılmaz
 
 Ne yapar:
   · ROL_IZIN sözlüğüne, '/de/musteri/olustur' ile AYNI rollerle
@@ -23,14 +24,14 @@ EK = Path(__file__).with_name("musteri_guncelle.py")
 YOL = "/de/musteri/guncelle"
 
 
-def dur(mesaj, kod=1):
+def dur(mesaj, kod=4):
     print(f"YAMA: {mesaj}")
     sys.exit(kod)
 
 
 def main():
     if len(sys.argv) != 3:
-        dur("kullanım: python yamala.py <girdi> <cikti>")
+        dur("kullanım: python yamala.py <girdi> <cikti>", 1)
     kaynak = Path(sys.argv[1]).read_text(encoding="utf-8")
 
     if re.search(r"""if\s+path\s*==\s*['"]%s['"]""" % re.escape(YOL), kaynak):
@@ -55,7 +56,7 @@ def main():
     for s in blok.splitlines():
         if s.strip():
             if not s.startswith("    "):
-                dur("ek dosyasının girintisi beklenmedik.")
+                dur("ek dosyasının girintisi beklenmedik.", 1)
             s = girinti + s[4:]
         satirlar.append(s)
     blok = "\n".join(satirlar) + "\n"
@@ -84,8 +85,21 @@ def main():
         dur(f"yamalı dosya derlenmedi ({e}); hiçbir şey yazılmadı.")
 
     Path(sys.argv[2]).write_text(kaynak, encoding="utf-8")
-    print(f"YAMA: tamam → {sys.argv[2]}")
+    print(f"YAMA: tamam -> {sys.argv[2]}")
 
 
 if __name__ == "__main__":
-    main()
+    # Türkçe Windows konsolu (cp1254) bazı karakterleri yazamaz; çıktı yüzünden
+    # yama asla çökmesin — yazılamayan karakter "?" olur.
+    for akis in (sys.stdout, sys.stderr):
+        try:
+            akis.reconfigure(errors="replace")
+        except Exception:
+            pass
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"YAMA: beklenmeyen hata ({type(e).__name__}: {e}); hiçbir şey yazılmadı.")
+        sys.exit(1)

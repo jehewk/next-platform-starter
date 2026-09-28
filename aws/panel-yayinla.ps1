@@ -3,6 +3,8 @@
   Bir uygulamayı derleyip S3 + CloudFront'a yükler.
 
 .DESCRIPTION
+  Hedef: S3 kovası (+ isteğe bağlı CloudFront) YA DA AWS Amplify uygulaması.
+
   1) .env yoksa .env.example'dan oluşturur; VITE_API_URL tanımlı olmalı
      (yoksa uygulama sessizce boş gelir — DEVIR §13.1)
   2) npm ci + npm run build
@@ -14,17 +16,21 @@
 
 .EXAMPLE
   .\panel-yayinla.ps1 -Panel panel-musteri -Kova dennis-musteri-346532553636 -DagitimId E1ABCDEF2GHIJ
+.EXAMPLE
+  .\panel-yayinla.ps1 -Panel panel-musteri -AmplifyUygulama d1a2b3c4d5e6f7
 #>
 [CmdletBinding()]
 param(
   [Parameter(Mandatory)][ValidateSet("panel-uretici", "panel-musteri")][string]$Panel,
-  [Parameter(Mandatory)][string]$Kova,
+  [string]$Kova,
   [string]$DagitimId,
+  [string]$AmplifyUygulama,
   [string]$Bolge = "eu-central-1",
   [string]$Profil = $env:AWS_PROFILE
 )
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\ortak.ps1"
+if (-not $Kova -and -not $AmplifyUygulama) { throw "-Kova ya da -AmplifyUygulama verilmeli." }
 
 $kok = Join-Path (Split-Path $PSScriptRoot -Parent) $Panel
 $envDosya = Join-Path $kok ".env"
@@ -47,6 +53,13 @@ try {
 $dist = Join-Path $kok "dist"
 if (-not (Test-Path (Join-Path $dist "index.html"))) { throw "dist\index.html oluşmadı" }
 Tamam "derlendi"
+
+if ($AmplifyUygulama) {
+  Adim "Amplify'a yükleniyor ($AmplifyUygulama)"
+  AmplifyYayinla $AmplifyUygulama $dist
+  Tamam "yayında"
+  return
+}
 
 Adim "S3'e yükleniyor: s3://$Kova"
 Cagir s3 sync (Join-Path $dist "assets") "s3://$Kova/assets" --delete --only-show-errors `

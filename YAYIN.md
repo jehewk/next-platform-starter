@@ -65,6 +65,14 @@ Betik önce ne yapacağını listeler ve onay ister, sonra:
    derlenip yüklenir, adresler tarayıcıda açılır. İlk kurulumda CloudFront'un
    yayılması 5–15 dakika sürer.
 
+   **CloudFront kapalıysa** (yeni hesaplarda `AccessDenied: Your account must be
+   verified before you can add new CloudFront resources`): betik otomatik olarak
+   **AWS Amplify Hosting**'e geçer; uygulamalar `https://main.<id>.amplifyapp.com`
+   adresinde yayınlanır (HTTPS, tek sayfa yönlendirme dahil). CloudFront'u açtırmak
+   için AWS Support'ta *Account and billing* konulu bir talep açıp hata mesajını
+   ekleyin. Yöntemi zorlamak için `-WebYontemi CloudFront` ya da
+   `-WebYontemi Amplify` (varsayılan `Otomatik`).
+
 Tekrar çalıştırmak güvenlidir: var olan hiçbir şey yeniden oluşturulmaz.
 Güncelleme yayınlamak için aynı komut ya da yalnızca web adımı:
 `.\hepsini-kur.ps1 -Atla backend,lambda,hesap`.
@@ -75,7 +83,8 @@ Tekil betikler: `backend-ayarlari.ps1` (kuru çalışma için `-Uygula`'sız),
 
 Betikler Windows PowerShell 5.1 ve PowerShell 7 ile uyumludur; PowerShell 7'de
 sahte bir AWS CLI ile uçtan uca test edildi (ilk kurulum, ikinci çalıştırmada
-hiçbir şeyin yeniden oluşturulmaması, bozuk kodda otomatik geri alma).
+hiçbir şeyin yeniden oluşturulmaması, bozuk kodda otomatik geri alma,
+CloudFront reddinde Amplify'a geçiş).
 
 ## Mağaza yayını (Capacitor)
 
