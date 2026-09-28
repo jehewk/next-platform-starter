@@ -29,7 +29,9 @@ $AWS_CLI = $komut.Source
 #>
 function Cagir {
   param([Parameter(ValueFromRemainingArguments = $true)]$A)
-  $ek = @("--region", $Bolge, "--output", "json")
+  # Budgets ve Cost Explorer yalnızca us-east-1'de: çağıran --region verebilir
+  $ek = @("--output", "json")
+  if ($A -notcontains "--region") { $ek += @("--region", $Bolge) }
   if ($Profil) { $ek += @("--profile", $Profil) }
   $hataDosyasi = [IO.Path]::GetTempFileName()
   $eski = $ErrorActionPreference
@@ -128,6 +130,43 @@ function AmplifyYayinla($appId, $dist, $dal = "main") {
     if ($durum -in @("FAILED", "CANCELLED")) { throw "Amplify yayını başarısız ($durum). Amplify konsolunda iş $($d.jobId) günlüğüne bakın." }
   } while ((Get-Date) -lt $son)
   throw "Amplify yayını 10 dakikada bitmedi; Amplify konsolundan durumu kontrol edin."
+}
+
+# Windows'taki "python" bazen yalnızca Microsoft Store kısayoludur; gerçekten
+# çalışanı bulur. Döner: @(yol, ek argümanlar...) ya da $null.
+function PythonBul {
+  foreach ($aday in @(@("python"), @("python3"), @("py", "-3"))) {
+    $k = Get-Command $aday[0] -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $k) { continue }
+    $ek = @($aday | Select-Object -Skip 1)
+    $eski = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    & $k.Source @ek --version *> $null
+    $ok = ($LASTEXITCODE -eq 0); $ErrorActionPreference = $eski
+    # Virgül: tek elemanlı dizi dönüşte düz metne açılmasın ($PYTHON[0] = yol kalsın)
+    if ($ok) { return , (@($k.Source) + $ek) }
+  }
+  return $null
+}
+
+# Lambda ortam değişkenlerini DİĞERLERİNİ KORUYARAK değiştirir
+# (update-function-configuration --environment tüm listeyi değiştirir).
+# Döner: değişiklik yapıldıysa $true.
+function LambdaOrtamGuncelle([hashtable]$degisiklikler) {
+  $yap = Cagir lambda get-function-configuration --function-name $LAMBDA
+  $v = [ordered]@{}
+  if ($yap.Environment -and $yap.Environment.Variables) {
+    $yap.Environment.Variables.PSObject.Properties | ForEach-Object { $v[$_.Name] = $_.Value }
+  }
+  $degisti = $false
+  foreach ($k in $degisiklikler.Keys) {
+    if ("$($v[$k])" -ne "$($degisiklikler[$k])") { $v[$k] = "$($degisiklikler[$k])"; $degisti = $true }
+  }
+  if (-not $degisti) { return $false }
+  Cagir lambda wait function-updated --function-name $LAMBDA | Out-Null
+  $d = JsonDosyasi @{ Variables = $v }
+  Cagir lambda update-function-configuration --function-name $LAMBDA --environment "file://$d" | Out-Null
+  Cagir lambda wait function-updated --function-name $LAMBDA | Out-Null
+  return $true
 }
 
 function Adim($metin)  { Write-Host "`n▶ $metin" -ForegroundColor Cyan }

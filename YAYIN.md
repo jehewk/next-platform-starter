@@ -123,6 +123,31 @@ sahte bir AWS CLI ile uçtan uca test edildi (ilk kurulum, ikinci çalıştırma
 hiçbir şeyin yeniden oluşturulmaması, bozuk kodda otomatik geri alma,
 CloudFront reddinde Amplify'a geçiş).
 
+## Maliyet koruması
+
+AWS'de kesin bir harcama tavanı yoktur; `aws\maliyet-koruma.ps1` uyarı ve fren
+katmanlarını kurar (`-Uygula` olmadan yalnızca rapor verir):
+
+| | Ne yapar |
+|---|---|
+| Bütçe | Aylık bütçe; %50/%80/%100 ve ay sonu tahmini aşımında e-posta |
+| Anomali | Normal dışı harcama artışında günlük e-posta (etkisi ≥ 5 USD) |
+| API sınırı | Saniyede en fazla X istek, fazlası 429 |
+| Lambda sınırı | Aynı anda en fazla N kopya (yeni hesaplarda hesap sınırı zaten 10) |
+| DynamoDB tavanı | İsteğe bağlı tablolarda okuma/yazma tavanı |
+| Günlük saklama | Süresiz günlük grupları 30 gün |
+| Ölçüm TTL | Ölçümler 180 gün sonra ücretsiz silinir (Lambda yamasıyla) |
+
+Sınırlar cihaz sayısı ve gönderim aralığından, cihaz verisi reddedilmesin diye
+paylı hesaplanır. Cihaz sayısı arttıkça tekrar çalıştırın:
+
+```powershell
+.\maliyet-koruma.ps1 -CihazSayisi 100 -GonderimSaniye 20 -AylikButce 20 -Uygula
+```
+
+Ölçüm TTL'i kapatmak: `-OlcumSaklamaGun 0`. TTL yalnızca bundan sonra yazılan
+ölçümleri siler.
+
 ## Mağaza yayını (Capacitor)
 
 Her uygulama klasöründe, bir kez:

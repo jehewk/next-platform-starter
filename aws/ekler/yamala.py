@@ -1,6 +1,7 @@
 """Canlı lambda_function.py'ye Dennis panellerinin ihtiyaç duyduğu yamaları uygular.
 
     python yamala.py <girdi/lambda_function.py> <cikti/lambda_function.py>
+    python yamala.py --olcum-tablosu <lambda_function.py>   (ölçüm tablosunu JSON yazar)
 
 Çıkış kodları:
     0  en az bir yama uygulandı (çıktı yazıldı)
@@ -34,10 +35,20 @@ Yamalar (her biri bağımsız; zaten varsa atlanır):
   · Onay başarısız olursa başvuru "onay_bekliyor" olarak kalır ve üretici
     panelindeki Başvurular sayfasından elle onaylanabilir.
 
+ D) Ölçüm kayıtlarına TTL (maliyet-koruma.ps1 ile birlikte)
+  · Ölçüm tablosu /de/cihaz/gecmis işleyicisinin okuduğu tablodur. Bu tabloya
+    yazılan her kayda (put_item, batch_writer) boto3 olay kancasıyla
+    "silinme" alanı (şimdi + OLCUM_SAKLAMA_GUN gün, epoch) eklenir; DynamoDB
+    TTL eski ölçümleri ücretsiz siler. Ölçüm yazan koda dokunulmaz.
+  · OLCUM_SAKLAMA_GUN tanımlı değilse ya da 0 ise hiçbir şey eklenmez.
+  · Ölçüm tablosu cihaz listesiyle aynı tabloysa (cihaz kayıtları silinirdi)
+    yama uygulanmaz.
+
 Sonuç Python derleyicisinden geçirilir; hata varsa hiçbir şey yazılmaz.
 Girdi dosyasına asla dokunmaz.
 """
 import builtins
+import json
 import re
 import sys
 from pathlib import Path
@@ -180,8 +191,11 @@ def yama_kayit(kaynak):
     return kaynak, True
 
 
-class OnayAtla(Exception):
-    """Otomatik onay uygulanamadı; diğer yamalar yine uygulanır."""
+class YamaAtla(Exception):
+    """Bu yama uygulanamadı; diğer yamalar yine uygulanır."""
+
+
+OnayAtla = YamaAtla
 
 
 def blok_bul(kaynak, yol):
@@ -259,22 +273,116 @@ def yama_otomatik_onay(kaynak):
     return kaynak, True
 
 
+TABLO_IFADESI = r"""Table\(\s*([A-Za-z_][A-Za-z0-9_]*|'[^'\n]*'|"[^"\n]*")\s*\)"""
+
+
+def tablo_ifadeleri(kaynak, yol):
+    k = blok_bul(kaynak, yol)
+    return re.findall(TABLO_IFADESI, kaynak[k[0]:k[1]]) if k else []
+
+
+def olcum_tablosu(kaynak):
+    """/de/cihaz/gecmis işleyicisinin okuduğu tablo ifadesi ve çözümü."""
+    ifadeler = tablo_ifadeleri(kaynak, "/de/cihaz/gecmis")
+    if not ifadeler:
+        raise YamaAtla("'/de/cihaz/gecmis' işleyicisinde Table(...) bulunamadı; ölçüm tablosu belirlenemedi.")
+    ifade = ifadeler[0]
+    if ifade in tablo_ifadeleri(kaynak, "/de/cihaz/liste"):
+        raise YamaAtla(f"ölçüm tablosu ({ifade}) cihaz listesiyle aynı; TTL cihaz kayıtlarını silerdi, uygulanmadı.")
+    sonuc = {"ifade": ifade, "deger": None, "ortam": None, "varsayilan": None}
+    sag = ifade
+    if not ifade[0] in "'\"":
+        m = re.search(r"^%s\s*=\s*([^\n#]+)" % re.escape(ifade), kaynak, re.M)
+        sag = m.group(1).strip() if m else ""
+    if sag[:1] in ("'", '"'):
+        sonuc["deger"] = sag.strip("'\"")
+    else:
+        m = re.match(r"""os\.(?:environ\.get|getenv)\(\s*['"]([^'"]+)['"]\s*(?:,\s*['"]([^'"]*)['"])?\s*\)""", sag) \
+            or re.match(r"""os\.environ\[\s*['"]([^'"]+)['"]\s*\]""", sag)
+        if m:
+            sonuc["ortam"] = m.group(1)
+            sonuc["varsayilan"] = m.group(2) if m.re.groups > 1 else None
+    return sonuc
+
+
+def yama_olcum_ttl(kaynak):
+    """D) Ölçüm tablosuna yazılan kayıtlara TTL alanı. Döner: (yeni_kaynak, uygulandi_mi)."""
+    if "def _olcum_ttl" in kaynak:
+        print("YAMA: olcum TTL kancasi zaten var.")
+        return kaynak, False
+    tablo = olcum_tablosu(kaynak)["ifade"]
+    kaynak_var = re.search(r"""^(\w+)\s*=\s*boto3\.resource\(\s*['"]dynamodb['"]""", kaynak, re.M)
+    if not kaynak_var:
+        raise YamaAtla("modül düzeyinde boto3.resource('dynamodb') bulunamadı; TTL kancası eklenmedi.")
+    h = re.search(r"^def\s+lambda_handler\s*\(", kaynak, re.M)
+    if not h:
+        raise YamaAtla("'def lambda_handler' bulunamadı; TTL kancası eklenmedi.")
+    d = kaynak_var.group(1)
+    kanca = f'''# Olcum kayitlarina TTL (aws/maliyet-koruma.ps1): {tablo} tablosuna yazilan
+# her kayda silinme zamani eklenir; DynamoDB eski olcumleri ucretsiz siler.
+# OLCUM_SAKLAMA_GUN tanimsiz ya da 0 ise kapali.
+def _olcum_ttl(params, **kwargs):
+    try:
+        gun = int(os.environ.get('OLCUM_SAKLAMA_GUN', '0') or 0)
+        if gun <= 0:
+            return
+        alan = os.environ.get('OLCUM_TTL_ALANI', 'silinme')
+        import time as _zaman
+        son = int(_zaman.time()) + gun * 86400
+        tablo = {tablo}
+        if params.get('TableName') == tablo and isinstance(params.get('Item'), dict):
+            params['Item'].setdefault(alan, son)
+        for ad, istekler in (params.get('RequestItems') or {{}}).items():
+            if ad == tablo:
+                for istek in istekler:
+                    kayit = (istek.get('PutRequest') or {{}}).get('Item')
+                    if isinstance(kayit, dict):
+                        kayit.setdefault(alan, son)
+    except Exception as e:
+        print(f"olcum ttl hatasi: {{e}}")
+
+
+try:  # kanca kurulamazsa Lambda yine calisir, yalnizca TTL eklenmez
+    for _olay in ('PutItem', 'BatchWriteItem'):
+        {d}.meta.client.meta.events.register('provide-client-params.dynamodb.' + _olay, _olcum_ttl)
+except Exception as _e:
+    print(f"olcum ttl kancasi kurulamadi: {{_e}}")
+
+
+'''
+    kaynak = kaynak[:h.start()] + kanca + kaynak[h.start():]
+    if not re.search(r"^import\s+[^\n]*\bos\b", kaynak, re.M):
+        kaynak = "import os\n" + kaynak
+    print(f"YAMA: olcum TTL kancasi eklendi (tablo: {tablo}).")
+    return kaynak, True
+
+
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--olcum-tablosu":
+        try:
+            builtins.print(json.dumps(olcum_tablosu(Path(sys.argv[2]).read_text(encoding="utf-8"))))
+        except YamaAtla as e:
+            print(f"YAMA: {e}")
+            sys.exit(4)
+        return
     if len(sys.argv) != 3:
         dur("kullanım: python yamala.py <girdi> <cikti>", 1)
     kaynak = Path(sys.argv[1]).read_text(encoding="utf-8")
 
     kaynak, a = yama_guncelle(kaynak)
     kaynak, b = yama_kayit(kaynak)
-    try:
-        kaynak, c = yama_otomatik_onay(kaynak)
-        onay_hatasi = None
-    except OnayAtla as e:
-        c, onay_hatasi = False, str(e)
-        print(f"YAMA: UYARI - otomatik onay UYGULANMADI: {onay_hatasi}")
-    if not (a or b or c):
-        if onay_hatasi:
-            dur("otomatik onay uygulanamadi; diger yamalar zaten var. Hicbir sey yazilmadi.")
+    atlananlar = []
+    uygulandi = [a, b]
+    for ad, yama in (("otomatik onay", yama_otomatik_onay), ("olcum TTL", yama_olcum_ttl)):
+        try:
+            kaynak, u = yama(kaynak)
+            uygulandi.append(u)
+        except YamaAtla as e:
+            atlananlar.append(ad)
+            print(f"YAMA: UYARI - {ad} UYGULANMADI: {e}")
+    if not any(uygulandi):
+        if atlananlar:
+            dur(f"{', '.join(atlananlar)} uygulanamadi; diger yamalar zaten var. Hicbir sey yazilmadi.")
         dur("tum yamalar zaten var, degisiklik gerekmiyor.", 3)
 
     try:

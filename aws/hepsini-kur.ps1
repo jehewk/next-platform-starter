@@ -233,17 +233,7 @@ foreach ($arac in "node", "npm") {
     if ($Atla -notcontains "web") { throw "$arac bulunamadı. nodejs.org'dan Node.js LTS kurun (web yayını için gerekli)." }
   }
 }
-# Windows'taki "python" bazen yalnızca Microsoft Store kısayoludur; gerçekten çalışanı bul.
-$PYTHON = $null
-foreach ($aday in @(@("python"), @("python3"), @("py", "-3"))) {
-  $k = Get-Command $aday[0] -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-  if (-not $k) { continue }
-  $ek = @($aday | Select-Object -Skip 1)
-  $eski = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-  & $k.Source @ek --version *> $null
-  $ok = ($LASTEXITCODE -eq 0); $ErrorActionPreference = $eski
-  if ($ok) { $PYTHON = @($k.Source) + $ek; break }
-}
+$PYTHON = PythonBul
 if (-not $PYTHON -and $Atla -notcontains "lambda") {
   Uyari "Python bulunamadı; Lambda eki adımı atlanacak (python.org'dan kurup tekrar çalıştırabilirsiniz)."
   $Atla += "lambda"
@@ -257,7 +247,7 @@ if ($Atla -notcontains "hesap" -and -not $UreticiEposta) {
 Write-Host ""
 Write-Host "Yapılacaklar:" -ForegroundColor White
 if ($Atla -notcontains "backend") { Bilgi "1. Backend ayarları (izinler, giriş akışı, kaptcha anahtarı)" }
-if ($Atla -notcontains "lambda")  { Bilgi "2. Lambda yamaları: müşteri düzenleme ucu, kayıt öznitelikleri, otomatik onay (yedekli, sağlık kontrollü)" }
+if ($Atla -notcontains "lambda")  { Bilgi "2. Lambda yamaları: müşteri düzenleme ucu, kayıt öznitelikleri, otomatik onay, ölçüm TTL (yedekli, sağlık kontrollü)" }
 if ($Atla -notcontains "hesap")   { Bilgi "3. Üretici hesabı: $UreticiEposta" }
 if ($Atla -notcontains "web")     {
   $yontemAdi = @{ S3Web = "S3 statik web sitesi (yalnızca http)"; Otomatik = "CloudFront; olmazsa Amplify"; CloudFront = "CloudFront"; Amplify = "Amplify, https" }[$WebYontemi]
