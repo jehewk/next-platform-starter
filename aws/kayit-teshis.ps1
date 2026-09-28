@@ -58,16 +58,16 @@ $gunluk = $mesajlar -join "`n"
 
 # ── 2) Havuz ──────────────────────────────────────────────────────────────
 Adim "Cognito havuzu ($HAVUZ)"
-$havuz = (Cagir cognito-idp describe-user-pool --user-pool-id $HAVUZ).UserPool
+$havuzBilgi = (Cagir cognito-idp describe-user-pool --user-pool-id $HAVUZ).UserPool
 
-$kendiKaydi = -not $havuz.AdminCreateUserConfig.AllowAdminCreateUserOnly
+$kendiKaydi = -not $havuzBilgi.AdminCreateUserConfig.AllowAdminCreateUserOnly
 if ($kendiKaydi) { Tamam "kendi kendine kayıt açık" }
 else {
   Sorun "kendi kendine kayıt KAPALI (yalnızca yönetici hesap açabilir) — sign_up reddedilir"
   $duzeltmeler += "kendi kendine kaydı aç"
 }
 
-$sema = @($havuz.SchemaAttributes | ForEach-Object { $_.Name })
+$sema = @($havuzBilgi.SchemaAttributes | ForEach-Object { $_.Name })
 $eksikOz = @("custom:rol", "custom:musteri_id" | Where-Object { $sema -notcontains $_ })
 if (-not $eksikOz.Count) { Tamam "custom:rol ve custom:musteri_id tanımlı" }
 else {
@@ -75,34 +75,64 @@ else {
   $duzeltmeler += "öznitelik ekle: $($eksikOz -join ', ')"
 }
 
-$zorunlu = @($havuz.SchemaAttributes | Where-Object { $_.Required -and $_.Name -notin @("email", "sub") } | ForEach-Object { $_.Name })
+# Backend yaması (ekler\yamala.py) ad → given_name, soyad → family_name,
+# telefon → phone_number gönderir; başka zorunlu öznitelik elle çözülmeli.
+$YAMA_KARSILAR = @("given_name", "family_name", "phone_number")
+$zorunlu = @($havuzBilgi.SchemaAttributes | Where-Object { $_.Required -and $_.Name -notin @("email", "sub") } | ForEach-Object { $_.Name })
+$yamaGerekli = $false
 if ($zorunlu.Count) {
-  Sorun "havuz şu öznitelikleri zorunlu tutuyor: $($zorunlu -join ', ') — backend yalnızca e-posta gönderiyor"
-  $sorunlar += "Zorunlu öznitelik ($($zorunlu -join ', ')): Cognito'da sonradan değiştirilemez; backend'in bu alanları göndermesi gerekir."
+  Uyari "havuz şu öznitelikleri zorunlu tutuyor: $($zorunlu -join ', ')"
+  $karsilanmaz = @($zorunlu | Where-Object { $YAMA_KARSILAR -notcontains $_ })
+  if ($karsilanmaz.Count) {
+    Sorun "backend bunları gönderemez: $($karsilanmaz -join ', ')"
+    $sorunlar += "Zorunlu öznitelik ($($karsilanmaz -join ', ')): Cognito'da sonradan değiştirilemez; backend'e ek alan gerekir."
+  }
+  # Canlı kod zaten gönderiyor mu?
+  $gecici = Join-Path ([IO.Path]::GetTempPath()) ("de-canli-" + [guid]::NewGuid().ToString("N").Substring(0, 8) + ".zip")
+  $canliKod = ""
+  try {
+    Invoke-WebRequest -Uri (Cagir lambda get-function --function-name $LAMBDA).Code.Location -OutFile $gecici -UseBasicParsing
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $z = [IO.Compression.ZipFile]::OpenRead($gecici)
+    try {
+      $g = $z.Entries | Where-Object { $_.FullName -eq "lambda_function.py" } | Select-Object -First 1
+      if ($g) { $o = New-Object IO.StreamReader($g.Open()); $canliKod = $o.ReadToEnd(); $o.Dispose() }
+    } finally { $z.Dispose() }
+  } catch { Uyari "canlı Lambda kodu okunamadı: $($_.Exception.Message)" }
+  finally { Remove-Item $gecici -ErrorAction SilentlyContinue }
+  $eksikGonderim = @($zorunlu | Where-Object { $YAMA_KARSILAR -contains $_ -and $canliKod -notmatch "'$_'" })
+  if ($canliKod -and -not $eksikGonderim.Count) { Tamam "backend bu öznitelikleri gönderiyor" }
+  else {
+    Sorun "backend kayıtta bunları göndermiyor: $((@($eksikGonderim) + @()) -join ', ')"
+    $yamaGerekli = $true
+    $duzeltmeler += "Lambda yaması: kayıtta ad, soyad, telefon Cognito'ya gönderilsin"
+  }
 } else { Tamam "e-posta dışında zorunlu öznitelik yok" }
 
-if ($havuz.LambdaConfig -and $havuz.LambdaConfig.PreSignUp) {
-  Uyari "ön kayıt tetikleyicisi var: $($havuz.LambdaConfig.PreSignUp) — kaydı o reddediyor olabilir"
-  $sorunlar += "Pre sign-up tetikleyicisi ($($havuz.LambdaConfig.PreSignUp)) kaydı reddediyor olabilir; CloudWatch'ta o fonksiyonun günlüğüne bakın."
+if ($havuzBilgi.LambdaConfig -and $havuzBilgi.LambdaConfig.PreSignUp) {
+  Uyari "ön kayıt tetikleyicisi var: $($havuzBilgi.LambdaConfig.PreSignUp) — kaydı o reddediyor olabilir"
+  $sorunlar += "Pre sign-up tetikleyicisi ($($havuzBilgi.LambdaConfig.PreSignUp)) kaydı reddediyor olabilir; CloudWatch'ta o fonksiyonun günlüğüne bakın."
 }
-if ($havuz.UsernameAttributes -and $havuz.UsernameAttributes -notcontains "email") {
-  Sorun "kullanıcı adı olarak yalnızca $($havuz.UsernameAttributes -join ', ') kabul ediliyor; backend e-posta kullanıyor"
+if ($havuzBilgi.UsernameAttributes -and $havuzBilgi.UsernameAttributes -notcontains "email") {
+  Sorun "kullanıcı adı olarak yalnızca $($havuzBilgi.UsernameAttributes -join ', ') kabul ediliyor; backend e-posta kullanıyor"
   $sorunlar += "Havuz kullanıcı adı olarak e-posta kabul etmiyor; havuz yeniden oluşturulmadan değiştirilemez."
 }
 
 # ── 3) İstemci ────────────────────────────────────────────────────────────
 Adim "Cognito istemcisi ($ISTEMCI)"
-$istemci = (Cagir cognito-idp describe-user-pool-client --user-pool-id $HAVUZ --client-id $ISTEMCI).UserPoolClient
-if ($istemci.ClientSecret) {
+$istemciBilgi = (Cagir cognito-idp describe-user-pool-client --user-pool-id $HAVUZ --client-id $ISTEMCI).UserPoolClient
+if ($istemciBilgi.ClientSecret) {
   Sorun "istemcinin gizli anahtarı (client secret) var — sign_up SECRET_HASH ister, backend göndermiyor"
   $sorunlar += "İstemcinin gizli anahtarı var. Gizli anahtarsız yeni bir uygulama istemcisi açılıp backend'deki COGNITO_CLIENT_ID güncellenmeli."
 } else { Tamam "gizli anahtar yok" }
 
+# sign_up bunları YAZAR; backend oturumda yalnızca custom öznitelikleri OKUR
 $gerekli = @("custom:rol", "custom:musteri_id")
+$yazGerekli = @($gerekli + @($zorunlu | Where-Object { $YAMA_KARSILAR -contains $_ }))
 $yazEksik = @()
-if ($istemci.WriteAttributes) { $yazEksik = @($gerekli | Where-Object { $istemci.WriteAttributes -notcontains $_ }) }
+if ($istemciBilgi.WriteAttributes) { $yazEksik = @($yazGerekli | Where-Object { $istemciBilgi.WriteAttributes -notcontains $_ }) }
 $okuEksik = @()
-if ($istemci.ReadAttributes) { $okuEksik = @($gerekli | Where-Object { $istemci.ReadAttributes -notcontains $_ }) }
+if ($istemciBilgi.ReadAttributes) { $okuEksik = @($gerekli | Where-Object { $istemciBilgi.ReadAttributes -notcontains $_ }) }
 if ($yazEksik.Count) { Sorun "istemci şunları yazamıyor: $($yazEksik -join ', ')"; $duzeltmeler += "istemciye yazma izni: $($yazEksik -join ', ')" }
 else { Tamam "istemci öznitelikleri yazabiliyor" }
 if ($okuEksik.Count) { Sorun "istemci şunları okuyamıyor: $($okuEksik -join ', ')"; $duzeltmeler += "istemciye okuma izni: $($okuEksik -join ', ')" }
@@ -113,7 +143,8 @@ Write-Host "`n══════════════ SONUÇ ═════�
 if ($gunluk -match 'SecretHash|secret hash') { $sorunlar += "Günlük: gizli anahtar (SECRET_HASH) hatası." }
 if (-not $duzeltmeler.Count -and -not $sorunlar.Count) {
   Tamam "Cognito ayarlarında sign_up'ı engelleyen bir şey bulunamadı."
-  if ($gunluk) { Bilgi "Asıl neden yukarıdaki CloudWatch satırında; bu çıktıyı paylaşın." }
+  Bilgi "Başvuruyu tekrar deneyin. Yukarıdaki günlük satırları önceki denemelere ait olabilir;"
+  Bilgi "hata sürerse bu betiği tekrar çalıştırıp çıktısını paylaşın."
   return
 }
 foreach ($s in $sorunlar) { Uyari $s }
@@ -128,8 +159,8 @@ if (-not $Duzelt) {
 # ── Düzeltme ──────────────────────────────────────────────────────────────
 $yedek = Join-Path (Join-Path $PSScriptRoot "yedekler") ("cognito-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
 New-Item -ItemType Directory -Force -Path $yedek | Out-Null
-[IO.File]::WriteAllText((Join-Path $yedek "havuz.json"), ($havuz | ConvertTo-Json -Depth 20), (New-Object Text.UTF8Encoding($false)))
-$istemciYedek = $istemci | Select-Object * -ExcludeProperty ClientSecret
+[IO.File]::WriteAllText((Join-Path $yedek "havuz.json"), ($havuzBilgi | ConvertTo-Json -Depth 20), (New-Object Text.UTF8Encoding($false)))
+$istemciYedek = $istemciBilgi | Select-Object * -ExcludeProperty ClientSecret
 [IO.File]::WriteAllText((Join-Path $yedek "istemci.json"), ($istemciYedek | ConvertTo-Json -Depth 20), (New-Object Text.UTF8Encoding($false)))
 Adim "Yedek: $yedek"
 
@@ -152,9 +183,9 @@ if ($yazEksik.Count -or $okuEksik.Count) {
             "AnalyticsConfiguration","PreventUserExistenceErrors","EnableTokenRevocation",
             "EnablePropagateAdditionalUserContextData","AuthSessionValidity","RefreshTokenRotation"
   $girdi = [ordered]@{ UserPoolId = $HAVUZ; ClientId = $ISTEMCI }
-  foreach ($p in $istemci.PSObject.Properties) { if ($izinli -contains $p.Name -and $null -ne $p.Value) { $girdi[$p.Name] = $p.Value } }
-  if ($yazEksik.Count) { $girdi.WriteAttributes = @(@($istemci.WriteAttributes) + $yazEksik) }
-  if ($okuEksik.Count) { $girdi.ReadAttributes = @(@($istemci.ReadAttributes) + $okuEksik) }
+  foreach ($p in $istemciBilgi.PSObject.Properties) { if ($izinli -contains $p.Name -and $null -ne $p.Value) { $girdi[$p.Name] = $p.Value } }
+  if ($yazEksik.Count) { $girdi.WriteAttributes = @(@($istemciBilgi.WriteAttributes) + $yazEksik) }
+  if ($okuEksik.Count) { $girdi.ReadAttributes = @(@($istemciBilgi.ReadAttributes) + $okuEksik) }
   $d = JsonDosyasi $girdi
   Cagir cognito-idp update-user-pool-client --cli-input-json "file://$d" | Out-Null
   Tamam "güncellendi"
@@ -168,15 +199,15 @@ if (-not $kendiKaydi) {
             "SmsConfiguration","UserPoolTags","AdminCreateUserConfig","UserPoolAddOns","AccountRecoverySetting",
             "VerificationMessageTemplate","UserPoolTier"
   $girdi = [ordered]@{ UserPoolId = $HAVUZ }
-  foreach ($p in $havuz.PSObject.Properties) { if ($izinli -contains $p.Name -and $null -ne $p.Value) { $girdi[$p.Name] = $p.Value } }
+  foreach ($p in $havuzBilgi.PSObject.Properties) { if ($izinli -contains $p.Name -and $null -ne $p.Value) { $girdi[$p.Name] = $p.Value } }
   # Şablon yoksa eski tekil mesaj alanları kullanılır (ikisi birlikte verilirse çakışabilir)
-  if (-not $havuz.VerificationMessageTemplate) {
+  if (-not $havuzBilgi.VerificationMessageTemplate) {
     foreach ($a in "EmailVerificationMessage", "EmailVerificationSubject", "SmsVerificationMessage") {
-      if ($havuz.$a) { $girdi[$a] = $havuz.$a }
+      if ($havuzBilgi.$a) { $girdi[$a] = $havuzBilgi.$a }
     }
   }
   $yeni = [ordered]@{ AllowAdminCreateUserOnly = $false }
-  foreach ($p in $havuz.AdminCreateUserConfig.PSObject.Properties) {
+  foreach ($p in $havuzBilgi.AdminCreateUserConfig.PSObject.Properties) {
     # UnusedAccountValidityDays eskidi; TemporaryPasswordValidityDays ile birlikte verilince hata verir
     if ($p.Name -notin @("AllowAdminCreateUserOnly", "UnusedAccountValidityDays")) { $yeni[$p.Name] = $p.Value }
   }
@@ -186,6 +217,12 @@ if (-not $kendiKaydi) {
   $son = (Cagir cognito-idp describe-user-pool --user-pool-id $HAVUZ).UserPool
   if ($son.AdminCreateUserConfig.AllowAdminCreateUserOnly) { throw "Güncelleme sonrası kayıt hâlâ kapalı görünüyor." }
   Tamam "açıldı"
+}
+
+if ($yamaGerekli) {
+  Adim "Lambda yaması (kayıt öznitelikleri)"
+  & (Join-Path $PSScriptRoot "hepsini-kur.ps1") -Atla backend, hesap, web -Onayla -TarayiciAcma -Bolge $Bolge -Profil $Profil
+  if ($LASTEXITCODE) { throw "Lambda yaması uygulanamadı; yukarıdaki hataya bakın." }
 }
 
 Write-Host "`nDüzeltildi. Müşteri uygulamasından başvuruyu tekrar deneyin." -ForegroundColor Green

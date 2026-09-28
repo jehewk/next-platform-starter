@@ -4,12 +4,14 @@
 # Windows PowerShell 5.1 ve PowerShell 7 ile uyumludur. Dosyalar UTF-8 (BOM'lu)
 # kaydedilir; aksi halde 5.1 Türkçe karakterleri bozar.
 
-$HESAP   = "346532553636"
-$LAMBDA  = "inverterai-api"
-$LAMBDA_ROLU     = "inverterai-api-role-f8jnfm8t"
-$HAVUZ   = "eu-central-1_6Y1AK5Z3q"
-$ISTEMCI = "2ltj93e724e1tgg7v21ap95oqi"
-$API_TABAN_VARSAYILAN = "https://xoja2a8sx5.execute-api.eu-central-1.amazonaws.com/prod"
+# Salt okunur: PowerShell değişken adlarında büyük/küçük harf ayırmaz; betikte
+# "$havuz = ..." gibi bir atama sabiti ezerdi. Salt okunur olunca hemen hata verir.
+$sabitler = [ordered]@{
+  HESAP = "346532553636"; LAMBDA = "inverterai-api"; LAMBDA_ROLU = "inverterai-api-role-f8jnfm8t"
+  HAVUZ = "eu-central-1_6Y1AK5Z3q"; ISTEMCI = "2ltj93e724e1tgg7v21ap95oqi"
+  API_TABAN_VARSAYILAN = "https://xoja2a8sx5.execute-api.eu-central-1.amazonaws.com/prod"
+}
+foreach ($k in $sabitler.Keys) { Set-Variable -Name $k -Value $sabitler[$k] -Option ReadOnly -Force }
 
 if (-not $Bolge) { $Bolge = "eu-central-1" }
 if (-not $Profil) { $Profil = $env:AWS_PROFILE }

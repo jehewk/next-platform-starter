@@ -15,6 +15,15 @@ const URUNLER = [
   { id: "ikisi", ad: "Akü + İnverter" },
 ];
 
+// Backend telefonu E.164'e çevirir (+905551234567); aynı kurallar.
+function telefonGecerli(t) {
+  const s = t.trim();
+  const r = s.replace(/\D/g, "");
+  if (s.startsWith("+")) return r.length >= 8 && r.length <= 15;
+  if (r.startsWith("00")) return r.length >= 10 && r.length <= 17;
+  return r.length === 10 || (r.length === 11 && r.startsWith("0")) || (r.length === 12 && r.startsWith("90"));
+}
+
 function sifreSorunu(s) {
   if (s.length < 8) return "En az 8 karakter olmalı";
   if (!/[a-zçğıöşü]/.test(s)) return "Küçük harf içermeli";
@@ -37,6 +46,7 @@ export default function Kayit() {
   async function gonder(e) {
     e.preventDefault();
     if (sifreSorunu(f.sifre)) { setHata("Şifre: " + sifreSorunu(f.sifre).toLocaleLowerCase("tr")); return; }
+    if (!telefonGecerli(f.telefon)) { setHata("Telefon numarası geçersiz (örnek: 0555 123 45 67)."); return; }
     setHata(null);
     setGonderiliyor(true);
     try {

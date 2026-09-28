@@ -6,7 +6,9 @@
   Sırasıyla (her adım tekrar çalıştırmaya dayanıklıdır; var olanı yeniden kurmaz):
 
    1. Backend ayarları (DEVIR §2)  — backend-ayarlari.ps1 -Uygula
-   2. Lambda eki                   — canlı koda /de/musteri/guncelle eklenir,
+   2. Lambda eki                   — canlı koda /de/musteri/guncelle ucu ve
+                                     kayıtta Cognito öznitelikleri (ad, soyad,
+                                     telefon) eklenir (ekler\yamala.py),
                                      yedeklenerek yüklenir, sağlık kontrolü
                                      geçmezse otomatik geri alınır
    3. Üretici hesabı               — panele girecek personel (Cognito)
@@ -245,7 +247,7 @@ if ($Atla -notcontains "hesap" -and -not $UreticiEposta) {
 Write-Host ""
 Write-Host "Yapılacaklar:" -ForegroundColor White
 if ($Atla -notcontains "backend") { Bilgi "1. Backend ayarları (izinler, giriş akışı, kaptcha anahtarı)" }
-if ($Atla -notcontains "lambda")  { Bilgi "2. Lambda'ya müşteri düzenleme ucu (yedekli, sağlık kontrollü)" }
+if ($Atla -notcontains "lambda")  { Bilgi "2. Lambda yamaları: müşteri düzenleme ucu, kayıt öznitelikleri (yedekli, sağlık kontrollü)" }
 if ($Atla -notcontains "hesap")   { Bilgi "3. Üretici hesabı: $UreticiEposta" }
 if ($Atla -notcontains "web")     {
   $yontemAdi = @{ S3Web = "S3 statik web sitesi (http)"; Otomatik = "CloudFront; olmazsa Amplify"; CloudFront = "CloudFront"; Amplify = "Amplify" }[$WebYontemi]
@@ -266,7 +268,7 @@ if ($Atla -notcontains "backend") {
 
 # ════════════════════════ 2. Lambda eki ════════════════════════
 if ($Atla -notcontains "lambda") {
-  Adim "Lambda: müşteri düzenleme ucu"
+  Adim "Lambda yamaları"
   try {
     $is = Join-Path ([IO.Path]::GetTempPath()) ("de-yama-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
     $canliKlasor = Join-Path $is "canli"; $yamaliKlasor = Join-Path $is "yamali"
@@ -285,7 +287,7 @@ if ($Atla -notcontains "lambda") {
     & $PYTHON[0] @pyArg | ForEach-Object { Bilgi $_ }
     $kod = $LASTEXITCODE; $ErrorActionPreference = $eski
 
-    if ($kod -eq 3) { Tamam "uç zaten canlıda; değişiklik gerekmedi"; $sonuclar["Lambda eki"] = "zaten vardı" }
+    if ($kod -eq 3) { Tamam "yamalar zaten canlıda; değişiklik gerekmedi"; $sonuclar["Lambda eki"] = "zaten vardı" }
     elseif ($kod -eq 4) { throw "Canlı kod beklenen yapıda değil; yama uygulanmadı, hiçbir şey yüklenmedi." }
     elseif ($kod -ne 0) { throw "Yama aracı hata verdi (çıkış kodu $kod); hiçbir şey yüklenmedi." }
     else {
@@ -387,3 +389,4 @@ if (@($sonuclar.Values | Where-Object { "$_" -like "HATA*" }).Count) {
   Write-Host "`nBazı adımlar başarısız oldu; hatayı düzeltip betiği tekrar çalıştırabilirsiniz (tamamlananlar yeniden yapılmaz)." -ForegroundColor Yellow
   exit 1
 }
+exit 0

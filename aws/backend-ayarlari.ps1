@@ -93,40 +93,40 @@ else {
 
 # ── 3) Şifreyle giriş akışı ─────────────────────────────────────────────
 Adim "3/4 Cognito istemci giriş akışları"
-$istemci = (Cagir cognito-idp describe-user-pool-client --user-pool-id $HAVUZ --client-id $ISTEMCI).UserPoolClient
+$istemciBilgi = (Cagir cognito-idp describe-user-pool-client --user-pool-id $HAVUZ --client-id $ISTEMCI).UserPoolClient
 $gerekli = "ALLOW_USER_PASSWORD_AUTH","ALLOW_REFRESH_TOKEN_AUTH","ALLOW_USER_SRP_AUTH"
-$eksik = $gerekli | Where-Object { $istemci.ExplicitAuthFlows -notcontains $_ }
-if (-not $eksik) { Tamam "akışlar tamam: $($istemci.ExplicitAuthFlows -join ', ')" }
+$eksik = $gerekli | Where-Object { $istemciBilgi.ExplicitAuthFlows -notcontains $_ }
+if (-not $eksik) { Tamam "akışlar tamam: $($istemciBilgi.ExplicitAuthFlows -join ', ')" }
 else {
   Yapilacak "eklenecek akışlar: $($eksik -join ', ')"
   if ($Uygula) {
     # update-user-pool-client verilmeyen alanları varsayılana döndürür; bu yüzden
     # mevcut yapılandırma okunup yalnızca akışlar değiştirilerek geri yazılır.
-    $akislar = @($istemci.ExplicitAuthFlows + $eksik | Select-Object -Unique)
+    $akislar = @($istemciBilgi.ExplicitAuthFlows + $eksik | Select-Object -Unique)
     $arg = @("cognito-idp","update-user-pool-client","--user-pool-id",$HAVUZ,"--client-id",$ISTEMCI,
              "--explicit-auth-flows") + $akislar
-    if ($istemci.ClientName) { $arg += @("--client-name", $istemci.ClientName) }
-    if ($istemci.RefreshTokenValidity) { $arg += @("--refresh-token-validity", $istemci.RefreshTokenValidity) }
-    if ($istemci.AccessTokenValidity) { $arg += @("--access-token-validity", $istemci.AccessTokenValidity) }
-    if ($istemci.IdTokenValidity) { $arg += @("--id-token-validity", $istemci.IdTokenValidity) }
-    if ($istemci.TokenValidityUnits) {
-      $u = $istemci.TokenValidityUnits
+    if ($istemciBilgi.ClientName) { $arg += @("--client-name", $istemciBilgi.ClientName) }
+    if ($istemciBilgi.RefreshTokenValidity) { $arg += @("--refresh-token-validity", $istemciBilgi.RefreshTokenValidity) }
+    if ($istemciBilgi.AccessTokenValidity) { $arg += @("--access-token-validity", $istemciBilgi.AccessTokenValidity) }
+    if ($istemciBilgi.IdTokenValidity) { $arg += @("--id-token-validity", $istemciBilgi.IdTokenValidity) }
+    if ($istemciBilgi.TokenValidityUnits) {
+      $u = $istemciBilgi.TokenValidityUnits
       $arg += @("--token-validity-units", "AccessToken=$($u.AccessToken),IdToken=$($u.IdToken),RefreshToken=$($u.RefreshToken)")
     }
-    if ($istemci.ReadAttributes) { $arg += @("--read-attributes") + $istemci.ReadAttributes }
-    if ($istemci.WriteAttributes) { $arg += @("--write-attributes") + $istemci.WriteAttributes }
-    if ($istemci.PreventUserExistenceErrors) { $arg += @("--prevent-user-existence-errors", $istemci.PreventUserExistenceErrors) }
-    if ($istemci.SupportedIdentityProviders) { $arg += @("--supported-identity-providers") + $istemci.SupportedIdentityProviders }
-    if ($istemci.CallbackURLs) { $arg += @("--callback-urls") + $istemci.CallbackURLs }
-    if ($istemci.LogoutURLs) { $arg += @("--logout-urls") + $istemci.LogoutURLs }
-    if ($istemci.DefaultRedirectURI) { $arg += @("--default-redirect-uri", $istemci.DefaultRedirectURI) }
-    if ($istemci.AllowedOAuthFlows) { $arg += @("--allowed-o-auth-flows") + $istemci.AllowedOAuthFlows }
-    if ($istemci.AllowedOAuthScopes) { $arg += @("--allowed-o-auth-scopes") + $istemci.AllowedOAuthScopes }
-    if ($istemci.AllowedOAuthFlowsUserPoolClient) { $arg += "--allowed-o-auth-flows-user-pool-client" }
-    if ($null -ne $istemci.EnableTokenRevocation) {
-      $arg += $(if ($istemci.EnableTokenRevocation) { "--enable-token-revocation" } else { "--no-enable-token-revocation" })
+    if ($istemciBilgi.ReadAttributes) { $arg += @("--read-attributes") + $istemciBilgi.ReadAttributes }
+    if ($istemciBilgi.WriteAttributes) { $arg += @("--write-attributes") + $istemciBilgi.WriteAttributes }
+    if ($istemciBilgi.PreventUserExistenceErrors) { $arg += @("--prevent-user-existence-errors", $istemciBilgi.PreventUserExistenceErrors) }
+    if ($istemciBilgi.SupportedIdentityProviders) { $arg += @("--supported-identity-providers") + $istemciBilgi.SupportedIdentityProviders }
+    if ($istemciBilgi.CallbackURLs) { $arg += @("--callback-urls") + $istemciBilgi.CallbackURLs }
+    if ($istemciBilgi.LogoutURLs) { $arg += @("--logout-urls") + $istemciBilgi.LogoutURLs }
+    if ($istemciBilgi.DefaultRedirectURI) { $arg += @("--default-redirect-uri", $istemciBilgi.DefaultRedirectURI) }
+    if ($istemciBilgi.AllowedOAuthFlows) { $arg += @("--allowed-o-auth-flows") + $istemciBilgi.AllowedOAuthFlows }
+    if ($istemciBilgi.AllowedOAuthScopes) { $arg += @("--allowed-o-auth-scopes") + $istemciBilgi.AllowedOAuthScopes }
+    if ($istemciBilgi.AllowedOAuthFlowsUserPoolClient) { $arg += "--allowed-o-auth-flows-user-pool-client" }
+    if ($null -ne $istemciBilgi.EnableTokenRevocation) {
+      $arg += $(if ($istemciBilgi.EnableTokenRevocation) { "--enable-token-revocation" } else { "--no-enable-token-revocation" })
     }
-    if ($istemci.AuthSessionValidity) { $arg += @("--auth-session-validity", $istemci.AuthSessionValidity) }
+    if ($istemciBilgi.AuthSessionValidity) { $arg += @("--auth-session-validity", $istemciBilgi.AuthSessionValidity) }
     Cagir @arg | Out-Null
     Tamam "güncellendi"
   }
