@@ -90,6 +90,11 @@ Tekrar çalıştırmak güvenlidir: var olan hiçbir şey yeniden oluşturulmaz.
 Güncelleme yayınlamak için aynı komut ya da yalnızca web adımı:
 `.\hepsini-kur.ps1 -Atla backend,lambda,hesap`.
 
+**Kayıt başvurusu "Kayit olusturulamadi" diyorsa**: Cognito hesap açmayı
+reddediyordur (asıl neden CloudWatch'ta). `.\kayit-teshis.ps1` nedeni gösterir,
+`.\kayit-teshis.ps1 -Duzelt` giderir (kendi kendine kaydı açma, eksik
+`custom:musteri_id` özniteliği, istemci okuma/yazma izinleri; önce yedek alır).
+
 Tekil betikler: `backend-ayarlari.ps1` (kuru çalışma için `-Uygula`'sız),
 `lambda-yukle.ps1` (`-GeriYukle <zip>` ile geri dönüş), `kullanici-olustur.ps1`,
 `panel-yayinla.ps1`.
