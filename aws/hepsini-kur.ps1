@@ -10,12 +10,15 @@
                                      yedeklenerek yüklenir, sağlık kontrolü
                                      geçmezse otomatik geri alınır
    3. Üretici hesabı               — panele girecek personel (Cognito)
-   4. Web yayını                   — iki uygulama için özel S3 kovası +
-                                     CloudFront (HTTPS, OAC, tek sayfa yönlendirme),
-                                     derleme, yükleme; adresler tarayıcıda açılır.
-                                     Hesap CloudFront için henüz doğrulanmamışsa
-                                     (AccessDenied) otomatik olarak AWS Amplify
-                                     Hosting kullanılır (yine HTTPS).
+   4. Web yayını                   — iki uygulama derlenip yüklenir; adresler
+                                     tarayıcıda açılır. -WebYontemi:
+                                       S3Web (varsayılan): S3 statik web sitesi,
+                                         http://<kova>.s3-website.<bölge>.amazonaws.com
+                                         Alan adı bağlanacaksa kova adı alan adıyla
+                                         aynı olmalı: -MusteriAlan / -UreticiAlan
+                                       Otomatik: özel kova + CloudFront (HTTPS);
+                                         hesap CloudFront için doğrulanmamışsa Amplify
+                                       CloudFront / Amplify: yalnızca o yöntem
 
   Oluşturulan kaynakların kimlikleri aws\kurulum-durumu.json'a yazılır.
 
@@ -26,6 +29,9 @@
 
 .EXAMPLE
   .\hepsini-kur.ps1 -Atla hesap,lambda      # yalnızca backend ayarları + web
+
+.EXAMPLE
+  .\hepsini-kur.ps1 -Atla backend,lambda,hesap -MusteriAlan app.dennisenerji.com -UreticiAlan panel.dennisenerji.com
 #>
 [CmdletBinding()]
 param(
@@ -35,8 +41,11 @@ param(
   [switch]$Onayla,
   [switch]$TarayiciAcma,
   [string]$ApiTaban,
-  # Otomatik: CloudFront; hesap CloudFront için doğrulanmamışsa Amplify Hosting
-  [ValidateSet("Otomatik", "CloudFront", "Amplify")][string]$WebYontemi = "Otomatik",
+  # S3Web: S3 statik web sitesi (http). Otomatik: CloudFront, olmazsa Amplify (https).
+  [ValidateSet("S3Web", "Otomatik", "CloudFront", "Amplify")][string]$WebYontemi = "S3Web",
+  # S3Web: bağlanacak alan adları; kova adı alan adıyla aynı olur (S3 bunu şart koşar)
+  [string]$MusteriAlan,
+  [string]$UreticiAlan,
   [string]$Bolge = "eu-central-1",
   [string]$Profil = $env:AWS_PROFILE
 )
@@ -49,9 +58,17 @@ $ortakParam = @{ Bolge = $Bolge }
 if ($Profil) { $ortakParam.Profil = $Profil }
 
 $UYGULAMALAR = @(
-  @{ Anahtar = "musteri"; Klasor = "panel-musteri"; Ad = "Müşteri uygulaması" },
-  @{ Anahtar = "uretici"; Klasor = "panel-uretici"; Ad = "Üretici paneli" }
+  @{ Anahtar = "musteri"; Klasor = "panel-musteri"; Ad = "Müşteri uygulaması"; Alan = $MusteriAlan },
+  @{ Anahtar = "uretici"; Klasor = "panel-uretici"; Ad = "Üretici paneli"; Alan = $UreticiAlan }
 )
+foreach ($u in $UYGULAMALAR) {
+  if ($u.Alan) {
+    $u.Alan = $u.Alan.Trim().ToLower() -replace '^https?://', '' -replace '/.*$', ''
+    if ($u.Alan -notmatch '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' -or $u.Alan.Length -gt 63) {
+      throw "Geçersiz alan adı: $($u.Alan) (ör. app.dennisenerji.com; S3 kova adı en fazla 63 karakter)"
+    }
+  }
+}
 
 function Durum {
   if (Test-Path $DURUM_DOSYASI) { return (Get-Content $DURUM_DOSYASI -Raw | ConvertFrom-Json) }
@@ -134,6 +151,50 @@ function CloudFrontYayini($u) {
   $sonuclar[$u.Ad] = "https://$($dag.DomainName)"
 }
 
+# S3 statik web sitesi: herkese açık okuma, index.html hem giriş hem hata sayfası
+# (tek sayfa uygulama: /cihaz/AKU-... gibi yollar doğrudan açılabilsin). Yalnızca http.
+function S3WebYayini($u) {
+  $kayit = (Durum).PSObject.Properties[$u.Anahtar].Value
+  $kova = if ($u.Alan) { $u.Alan }
+          elseif ($kayit -and $kayit.yontem -eq "s3web" -and $kayit.kova) { $kayit.kova }
+          else { "dennis-$($u.Anahtar)-$HESAP" }
+
+  if (Var s3api head-bucket --bucket $kova) { Tamam "kova mevcut: $kova" }
+  else {
+    try { Cagir s3api create-bucket --bucket $kova --create-bucket-configuration "LocationConstraint=$Bolge" | Out-Null }
+    catch {
+      if ($_.Exception.Message -match 'BucketAlreadyExists') { throw "'$kova' adlı kova başka bir AWS hesabında var; bu ad kullanılamaz." }
+      throw
+    }
+    Tamam "kova oluşturuldu: $kova"
+  }
+
+  # Hesap düzeyindeki "genel erişimi engelle" açıksa kova politikası reddedilir
+  $hesapEngeli = (Dene s3control get-public-access-block --account-id $HESAP).PublicAccessBlockConfiguration
+  if ($hesapEngeli -and ($hesapEngeli.BlockPublicPolicy -or $hesapEngeli.RestrictPublicBuckets)) {
+    throw ("Hesap düzeyinde 'Block Public Access' açık; S3 web sitesi herkese açılamaz. S3 konsolu > " +
+           "Block Public Access settings for this account bölümünden kapatın ya da: " +
+           "aws s3control delete-public-access-block --account-id $HESAP")
+  }
+  # ACL'ler kapalı kalır; yalnızca aşağıdaki okuma politikası izinli
+  Cagir s3api put-public-access-block --bucket $kova --public-access-block-configuration `
+    "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=false,RestrictPublicBuckets=false" | Out-Null
+  $site = JsonDosyasi @{ IndexDocument = @{ Suffix = "index.html" }; ErrorDocument = @{ Key = "index.html" } }
+  Cagir s3api put-bucket-website --bucket $kova --website-configuration "file://$site" | Out-Null
+  $pol = JsonDosyasi @{ Version = "2012-10-17"; Statement = @(@{
+    Sid = "HerkeseAcikOkuma"; Effect = "Allow"; Principal = "*"
+    Action = "s3:GetObject"; Resource = "arn:aws:s3:::$kova/*" }) }
+  Cagir s3api put-bucket-policy --bucket $kova --policy "file://$pol" | Out-Null
+  Tamam "statik web sitesi açık (herkes okuyabilir, yalnızca siz yazabilirsiniz)"
+
+  $adres = "http://$kova.s3-website.$Bolge.amazonaws.com"
+  DurumKaydet $u.Anahtar @{ yontem = "s3web"; kova = $kova; adres = $adres }
+  & (Join-Path $PSScriptRoot "panel-yayinla.ps1") -Panel $u.Klasor -Kova $kova @ortakParam
+  $script:adresler += [pscustomobject]@{ Ad = $u.Ad; Adres = $adres }
+  $sonuclar[$u.Ad] = $adres
+  if ($u.Alan) { $script:alanNotlari += "$($u.Alan)  CNAME  $kova.s3-website.$Bolge.amazonaws.com" }
+}
+
 # AWS Amplify Hosting: uygulama "dennis-<ad>", dal "main", HTTPS alan adı Amplify'dan.
 function AmplifyYayini($u) {
   $app = AmplifyUygulamasi "dennis-$($u.Anahtar)"
@@ -186,7 +247,10 @@ Write-Host "Yapılacaklar:" -ForegroundColor White
 if ($Atla -notcontains "backend") { Bilgi "1. Backend ayarları (izinler, giriş akışı, kaptcha anahtarı)" }
 if ($Atla -notcontains "lambda")  { Bilgi "2. Lambda'ya müşteri düzenleme ucu (yedekli, sağlık kontrollü)" }
 if ($Atla -notcontains "hesap")   { Bilgi "3. Üretici hesabı: $UreticiEposta" }
-if ($Atla -notcontains "web")     { Bilgi "4. Web yayını (CloudFront; olmazsa Amplify): müşteri uygulaması ve üretici paneli" }
+if ($Atla -notcontains "web")     {
+  $yontemAdi = @{ S3Web = "S3 statik web sitesi (http)"; Otomatik = "CloudFront; olmazsa Amplify"; CloudFront = "CloudFront"; Amplify = "Amplify" }[$WebYontemi]
+  Bilgi "4. Web yayını ($yontemAdi): müşteri uygulaması ve üretici paneli"
+}
 if (-not $Onayla) {
   $cevap = Read-Host "`nDevam edilsin mi? (E/H)"
   if ($cevap -notmatch '^(e|evet|y|yes)$') { Write-Host "İptal edildi."; return }
@@ -246,8 +310,9 @@ if ($Atla -notcontains "hesap") {
 $adresler = @()
 if ($Atla -notcontains "web") {
   $script:yeniDagitimlar = @()
+  $script:alanNotlari = @()
 
-  $cloudFrontKapali = ($WebYontemi -eq "Amplify")
+  $cloudFrontKapali = ($WebYontemi -in @("Amplify", "S3Web"))
   if (-not $cloudFrontKapali) {
     try {
       Adim "CloudFront erişim denetimi (OAC)"
@@ -268,6 +333,11 @@ if ($Atla -notcontains "web") {
   }
   foreach ($u in $UYGULAMALAR) {
     Adim "$($u.Ad)"
+    if ($WebYontemi -eq "S3Web") {
+      try { S3WebYayini $u }
+      catch { Uyari $_.Exception.Message; $sonuclar[$u.Ad] = "HATA: $($_.Exception.Message)" }
+      continue
+    }
     $yayinlandi = $false
     if (-not $cloudFrontKapali) {
       try {
@@ -307,6 +377,10 @@ if ($adresler.Count) {
     Bilgi "$($a.Ad): $($a.Adres)"
     if (-not $TarayiciAcma) { try { Start-Process $a.Adres } catch { } }
   }
+}
+if ($alanNotlari.Count) {
+  Write-Host "`nAlan adı sağlayıcınızda (DNS) şu kayıtları ekleyin:" -ForegroundColor White
+  foreach ($n in $alanNotlari) { Bilgi $n }
 }
 Bilgi "Kaynak kimlikleri: $DURUM_DOSYASI"
 if (@($sonuclar.Values | Where-Object { "$_" -like "HATA*" }).Count) {

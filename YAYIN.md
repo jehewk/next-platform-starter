@@ -60,18 +60,31 @@ Betik önce ne yapacağını listeler ve onay ister, sonra:
    dosyalar korunur. Yüklemeden sonra `/de/kaptcha` ile sağlık kontrolü yapılır;
    geçmezse önceki kod **otomatik** geri yüklenir.
 3. **Üretici hesabı**: sorulan e-posta ve şifreyle (kalıcı şifre).
-4. **Web yayını**: her uygulama için tamamen özel bir S3 kovası +
-   CloudFront (HTTPS, yalnızca CloudFront okuyabilir, tek sayfa yönlendirme);
-   derlenip yüklenir, adresler tarayıcıda açılır. İlk kurulumda CloudFront'un
-   yayılması 5–15 dakika sürer.
+4. **Web yayını** — varsayılan **S3 statik web sitesi**: her uygulama için bir
+   kova, web sitesi barındırma açık, herkese açık okuma (yazma yalnızca sizde),
+   `index.html` hem giriş hem hata sayfası (tek sayfa yönlendirme). Adres:
+   `http://<kova>.s3-website.eu-central-1.amazonaws.com`, tarayıcıda açılır.
 
-   **CloudFront kapalıysa** (yeni hesaplarda `AccessDenied: Your account must be
-   verified before you can add new CloudFront resources`): betik otomatik olarak
-   **AWS Amplify Hosting**'e geçer; uygulamalar `https://main.<id>.amplifyapp.com`
-   adresinde yayınlanır (HTTPS, tek sayfa yönlendirme dahil). CloudFront'u açtırmak
-   için AWS Support'ta *Account and billing* konulu bir talep açıp hata mesajını
-   ekleyin. Yöntemi zorlamak için `-WebYontemi CloudFront` ya da
-   `-WebYontemi Amplify` (varsayılan `Otomatik`).
+   **Alan adı bağlamak**: S3, kova adının alan adıyla birebir aynı olmasını şart
+   koşar. Betiği alan adlarıyla çalıştırın; kovalar bu adlarla açılır ve DNS'e
+   eklenecek CNAME kayıtları sonda yazılır:
+
+   ```powershell
+   .\hepsini-kur.ps1 -Atla backend,lambda,hesap -MusteriAlan app.dennisenerji.com -UreticiAlan panel.dennisenerji.com
+   ```
+
+   Sonraki çalıştırmalarda alan adını tekrar yazmak gerekmez (kurulum-durumu.json).
+   Kök alan (`dennisenerji.com`) CNAME alamaz; alt alan kullanın ya da Route 53
+   "alias" kaydı açın.
+
+   S3 web sitesi yalnızca **http** sunar: tarayıcı "Güvenli değil" gösterir,
+   PWA olarak ana ekrana ekleme ve çevrimdışı önbellek çalışmaz (uygulama çalışır;
+   API çağrıları yine https). Mağaza uygulamaları (Capacitor) bundan etkilenmez.
+   HTTPS için `-WebYontemi Otomatik` (CloudFront; hesap doğrulanmamışsa
+   Amplify, `https://main.<id>.amplifyapp.com`) ya da `CloudFront` / `Amplify`.
+
+   Hesap düzeyinde "Block Public Access" açıksa betik durur ve nasıl
+   kapatılacağını yazar.
 
 Tekrar çalıştırmak güvenlidir: var olan hiçbir şey yeniden oluşturulmaz.
 Güncelleme yayınlamak için aynı komut ya da yalnızca web adımı:
