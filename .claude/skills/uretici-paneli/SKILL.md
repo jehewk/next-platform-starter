@@ -52,7 +52,8 @@ hata diğerinde de düzeltilmeli. Mimari ve yayın: kök `YAYIN.md`.
   `baglamOlustur`) + `panel` gönderilir. 429/504'te sunucunun mesajı gösterilir;
   diğer hatalarda yerel motor (`yanitla`) yanıtlar.
 - Sunucu: `aws/ekler/asistan/dennis_asistan.py` Lambda katmanında (Anthropic Python
-  SDK, `claude-opus-5-5`, düşük efor, web araması, `fallbacks: "default"`). Ana
+  SDK, varsayılan `claude-haiku-4-5` — `ASISTAN_MODEL` ile değişir; Opus/Sonnet
+  seçilirse düşük efor ve `fallbacks: "default"` eklenir; web araması). Ana
   Lambda'ya yalnızca yönlendirme eklenir (`aws/ekler/yamala.py`, yama E). Kişi başı
   ve toplam günlük soru sınırı DynamoDB `dennis-asistan-kota` tablosunda; sayaç
   çalışmazsa uç kapalı kalır.

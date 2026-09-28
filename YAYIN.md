@@ -131,15 +131,16 @@ bilir. Anthropic API anahtarı gerekir (console.anthropic.com > API Keys); betik
 (ekranda görünmez), ücretsiz bir çağrıyla doğrular ve Lambda ortamına yazar.
 
 ```powershell
-.\asistan-kur.ps1                                        # varsayılan: claude-opus-5-5
+.\asistan-kur.ps1                                        # varsayılan: claude-haiku-4-5
 .\asistan-kur.ps1 -KullaniciGunlukLimit 50 -ToplamGunlukLimit 500
 .\asistan-kur.ps1 -AnahtarYenile                         # anahtarı değiştir
 ```
 
-Maliyet: soru başına ~2-4 cent + web araması başına ~1 cent. Kişi başı (30) ve toplam
-(300) günlük soru sınırı vardır; varsayılanlarla en kötü durum ~270 USD/ay. Gerçek
-tavan için Anthropic Console > Settings > Limits'ten aylık harcama sınırı koyun.
-Daha ucuz model: `-Model claude-sonnet-5-5` (~yarı fiyat) ya da `claude-haiku-4-5`.
+Maliyet (claude-haiku-4-5): soru başına ~0,5-1 cent + web araması başına ~1 cent.
+Kişi başı (20) ve toplam (2000) günlük soru sınırı vardır; varsayılanlarla en kötü
+durum ~420 USD/ay. Gerçek tavan için Anthropic Console > Settings > Limits'ten aylık
+harcama sınırı koyun. Daha güçlü model: `-Model claude-sonnet-5-5` (~2 kat) ya da
+`claude-opus-5-5` (~4 kat).
 
 ## Maliyet koruması
 

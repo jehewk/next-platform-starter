@@ -19,8 +19,8 @@
    5) Lambda yaması — /de/asistan yönlendirmesi (yedekli, sağlık kontrollü)
    6) Uygulamalar — VITE_ASISTAN_YOLU=/de/asistan ile derlenip yayınlanır
 
-  Maliyet: soru başına ~2-4 cent (claude-opus-5-5, düşük efor) + web araması
-  başına ~1 cent. Kişi başı ve toplam GÜNLÜK soru sınırı vardır; sayaç
+  Maliyet: soru başına ~0,5-1 cent (claude-haiku-4-5) + web araması başına
+  ~1 cent. Kişi başı ve toplam GÜNLÜK soru sınırı vardır; sayaç
   çalışmazsa asistan kapalı kalır (sınırsız çalışmaz). Ayrıca Anthropic
   Console > Settings > Limits'ten aylık harcama tavanı koyun: AWS'den farklı
   olarak orada gerçek bir üst sınır vardır.
@@ -29,15 +29,15 @@
 
 .EXAMPLE
   .\asistan-kur.ps1
-  .\asistan-kur.ps1 -Model claude-sonnet-5-5 -ToplamGunlukLimit 500
+  .\asistan-kur.ps1 -Model claude-sonnet-5-5 -ToplamGunlukLimit 1000
   .\asistan-kur.ps1 -AnahtarYenile              # API anahtarını değiştir
 #>
 [CmdletBinding()]
 param(
-  [string]$Model = "claude-opus-5-5",
+  [string]$Model = "claude-haiku-4-5",
   [ValidateSet("low", "medium", "high")][string]$Efor = "low",
-  [ValidateRange(1, 10000)][int]$KullaniciGunlukLimit = 30,
-  [ValidateRange(1, 1000000)][int]$ToplamGunlukLimit = 300,
+  [ValidateRange(1, 10000)][int]$KullaniciGunlukLimit = 20,
+  [ValidateRange(1, 1000000)][int]$ToplamGunlukLimit = 2000,
   [ValidateRange(0, 10)][int]$WebArama = 3,
   [switch]$AnahtarYenile,
   [switch]$Onayla,
@@ -78,12 +78,13 @@ $platform = if ($mimari -eq "arm64") { "manylinux2014_aarch64" } else { "manylin
 $anahtarVar = [bool]($yap.Environment -and $yap.Environment.Variables -and $yap.Environment.Variables.PSObject.Properties["ANTHROPIC_API_KEY"])
 Tamam "Lambda: python$pySurum, $mimari, zaman aşımı $($yap.Timeout) sn, bellek $($yap.MemorySize) MB"
 
-$soruBasi = 0.03; $aylikEnFazla = [math]::Round($ToplamGunlukLimit * $soruBasi * 30)
+# Soru başına yaklaşık maliyet (USD): Haiku ~0,7 cent, Sonnet ~1,5, Opus ~3
+$soruBasi = if ($Model -like "claude-haiku*") { 0.007 } elseif ($Model -like "claude-sonnet*") { 0.015 } else { 0.03 }; $aylikEnFazla = [math]::Round($ToplamGunlukLimit * $soruBasi * 30)
 Write-Host "`nYapılacaklar:" -ForegroundColor White
 Bilgi ("1. Anthropic API anahtarı " + $(if ($anahtarVar -and -not $AnahtarYenile) { "(zaten tanımlı; değiştirmek için -AnahtarYenile)" } else { "sorulacak" }))
 Bilgi "2. Günlük soru sayacı: kişi başı $KullaniciGunlukLimit, toplam $ToplamGunlukLimit soru/gün"
 Bilgi "3. Lambda katmanı $KATMAN (Anthropic SDK $SDK_SURUMU + asistan modülü)"
-Bilgi "4. Model $Model, efor $Efor, web araması soru başına en fazla $WebArama"
+Bilgi ("4. Model $Model" + $(if ($Model -notlike "claude-haiku*") { ", efor $Efor" }) + ", web araması soru başına en fazla $WebArama")
 Bilgi "5. Lambda yaması (/de/asistan) ve iki uygulamanın yeniden yayını"
 Bilgi "En kötü durumda (her gün sınır dolarsa) aylık ~$aylikEnFazla USD. Gerçek kullanım genelde çok daha az."
 if (-not $Onayla) {

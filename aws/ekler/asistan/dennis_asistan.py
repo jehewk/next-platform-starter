@@ -99,9 +99,9 @@ def _kota(dynamodb, kullanici):
     silinme = int(time.time()) + 3 * 86400
     tablo = dynamodb.Table(ad)
     try:
-        if not _sayac(tablo, f"k#{kullanici}#{gun}", int(_ayar("ASISTAN_KULLANICI_LIMIT", "30")), silinme):
+        if not _sayac(tablo, f"k#{kullanici}#{gun}", int(_ayar("ASISTAN_KULLANICI_LIMIT", "20")), silinme):
             return 429, "Bugünkü soru hakkınız doldu; yarın tekrar sorabilirsiniz."
-        if not _sayac(tablo, f"toplam#{gun}", int(_ayar("ASISTAN_TOPLAM_LIMIT", "300")), silinme):
+        if not _sayac(tablo, f"toplam#{gun}", int(_ayar("ASISTAN_TOPLAM_LIMIT", "2000")), silinme):
             return 429, "Asistan bugün yoğun; lütfen yarın tekrar deneyin."
     except Exception as e:
         # Sayaç çalışmıyorsa sınırsız çalışmak yerine kapalı kal
@@ -186,7 +186,7 @@ def yanitla(body, event, dynamodb):
     if engel:
         return engel[0], {"hata": engel[1]}
 
-    model = _ayar("ASISTAN_MODEL", "claude-opus-5-5")
+    model = _ayar("ASISTAN_MODEL", "claude-haiku-4-5")
     sistem = SISTEM_URETICI if body.get("panel") == "uretici" else SISTEM_MUSTERI
     istek = _istek(model, sistem, mesajlar)
     istemci = anthropic.Anthropic(max_retries=1)
