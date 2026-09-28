@@ -24,6 +24,16 @@ Yamalar (her biri bağımsız; zaten varsa atlanır):
   · Geçersiz telefon, kayıt yazılmadan önce 400 ile reddedilir.
   · telefon_e164() yardımcısı lambda_handler'ın önüne eklenir.
 
+ C) Otomatik onay
+  · Kayıt başarılı olunca, üreticinin "Onayla" düğmesinin yaptığı iş hemen
+    yapılır: Cognito hesabı onaylanır (admin_confirm_sign_up) ve müşteri
+    kaydı onaylı duruma geçer. Havuz kimliği ve onaylı durum değeri canlı
+    /de/kayit/karar işleyicisinden okunur; bulunamazsa yama uygulanmaz.
+  · Lambda ortam değişkeni OTOMATIK_ONAY=0 yapılırsa eski akış (üretici
+    onayı) geri gelir; kod değişikliği gerekmez.
+  · Onay başarısız olursa başvuru "onay_bekliyor" olarak kalır ve üretici
+    panelindeki Başvurular sayfasından elle onaylanabilir.
+
 Sonuç Python derleyicisinden geçirilir; hata varsa hiçbir şey yazılmaz.
 Girdi dosyasına asla dokunmaz.
 """
@@ -170,6 +180,85 @@ def yama_kayit(kaynak):
     return kaynak, True
 
 
+class OnayAtla(Exception):
+    """Otomatik onay uygulanamadı; diğer yamalar yine uygulanır."""
+
+
+def blok_bul(kaynak, yol):
+    """path == yol işleyicisi: (baş, bit, girinti) ya da None."""
+    capa = re.search(
+        r"""^([ \t]*)if\s+path\s*==\s*['"]%s['"][^\n]*:[^\n]*\n""" % re.escape(yol), kaynak, re.M)
+    if not capa:
+        return None
+    g = capa.group(1)
+    son = re.compile(r"^(?!%s[ \t])[ \t]*\S" % re.escape(g), re.M).search(kaynak, capa.end())
+    return capa.end(), (son.start() if son else len(kaynak)), g
+
+
+def yama_otomatik_onay(kaynak):
+    """C) Kayıt başvurusu anında onaylanır. Döner: (yeni_kaynak, uygulandi_mi)."""
+    if "OTOMATIK_ONAY" in kaynak:
+        print("YAMA: otomatik onay zaten var.")
+        return kaynak, False
+
+    k = blok_bul(kaynak, "/de/kayit/karar")
+    if not k:
+        raise OnayAtla("'/de/kayit/karar' işleyicisi bulunamadı; otomatik onay uygulanamadı.")
+    karar = kaynak[k[0]:k[1]]
+
+    # Havuz kimliği: karar işleyicisindeki admin_confirm_sign_up çağrısından
+    m = re.search(r"admin_confirm_sign_up\((?:[^()]|\([^()]*\))*?UserPoolId\s*=\s*([^,\)\n]+)", karar, re.S)
+    if not m:
+        raise OnayAtla("onay işleyicisinde admin_confirm_sign_up(UserPoolId=...) bulunamadı; otomatik onay uygulanamadı.")
+    havuz = m.group(1).strip()
+    istemci = re.search(r"""^(\w+)\s*=\s*boto3\.client\(\s*['"]cognito-idp['"]""", kaynak, re.M)
+    cagri = re.search(r"(\w+)\.admin_confirm_sign_up\(", karar)
+    cognito = cagri.group(1) if cagri else (istemci.group(1) if istemci else None)
+    if not cognito:
+        raise OnayAtla("Cognito istemci değişkeni bulunamadı; otomatik onay uygulanamadı.")
+
+    # Onaylı durum değeri: karar işleyicisindeki dizgelerden
+    adaylar = [d for d in re.findall(r"""['"]([a-z_]+)['"]""", karar)
+               if re.search(r"onay|aktif", d) and d not in ("onay", "onay_bekliyor", "karar")]
+    if not adaylar:
+        raise OnayAtla("onay işleyicisinde onaylı durum değeri (ör. 'onaylandi') bulunamadı; otomatik onay uygulanamadı.")
+    onayli = adaylar[0]
+
+    k2 = blok_bul(kaynak, "/de/musteri/kayit")
+    if not k2:
+        raise OnayAtla("'/de/musteri/kayit' işleyicisi bulunamadı; otomatik onay uygulanamadı.")
+    blok = kaynak[k2[0]:k2[1]]
+    # Başarılı yanıt: sign_up'tan SONRAKİ ilk "return response(200"
+    su = blok.find("sign_up(")
+    ret = re.compile(r"^([ \t]*)return\s+response\(\s*200\b", re.M).search(blok, su if su >= 0 else 0)
+    if su < 0 or not ret:
+        raise OnayAtla("kayıt işleyicisinde sign_up sonrası başarılı yanıt bulunamadı; otomatik onay uygulanamadı.")
+    g = ret.group(1)
+    i = g + "    "
+    for gerekli in ("musteri_id", "eposta"):
+        if not re.search(r"^\s*%s\s*=" % gerekli, blok[:ret.start()], re.M):
+            raise OnayAtla(f"kayıt işleyicisinde '{gerekli}' değişkeni yok; otomatik onay uygulanamadı.")
+    ek = (f"{g}# Otomatik onay (OTOMATIK_ONAY=0 ile kapatılır): üreticinin Onayla düğmesiyle aynı iş\n"
+          f"{g}if os.environ.get('OTOMATIK_ONAY', '1') == '1':\n"
+          f"{i}try:\n"
+          f"{i}    {cognito}.admin_confirm_sign_up(UserPoolId={havuz}, Username=eposta)\n"
+          f"{i}    dynamodb.Table(DE_MUSTERI).update_item(\n"
+          f"{i}        Key={{'musteri_id': musteri_id}},\n"
+          f"{i}        UpdateExpression='SET kayit_durumu = :d',\n"
+          f"{i}        ExpressionAttributeValues={{':d': '{onayli}'}})\n"
+          f"{i}    return response(200, {{'musteri_id': musteri_id, 'otomatik_onay': True,\n"
+          f"{i}                           'mesaj': 'Hesabiniz acildi. Giris yapabilirsiniz.'}})\n"
+          f"{i}except Exception as e:\n"
+          f"{i}    # Basvuru onay_bekliyor kalir; uretici panelden elle onaylayabilir\n"
+          f"{i}    print(f\"otomatik onay hatasi: {{e}}\")\n")
+    blok = blok[:ret.start()] + ek + blok[ret.start():]
+    kaynak = kaynak[:k2[0]] + blok + kaynak[k2[1]:]
+    if not re.search(r"^import\s+[^\n]*\bos\b|^import os\b", kaynak, re.M):
+        kaynak = "import os\n" + kaynak
+    print(f"YAMA: otomatik onay eklendi (havuz: {havuz}, onayli durum: '{onayli}').")
+    return kaynak, True
+
+
 def main():
     if len(sys.argv) != 3:
         dur("kullanım: python yamala.py <girdi> <cikti>", 1)
@@ -177,7 +266,15 @@ def main():
 
     kaynak, a = yama_guncelle(kaynak)
     kaynak, b = yama_kayit(kaynak)
-    if not (a or b):
+    try:
+        kaynak, c = yama_otomatik_onay(kaynak)
+        onay_hatasi = None
+    except OnayAtla as e:
+        c, onay_hatasi = False, str(e)
+        print(f"YAMA: UYARI - otomatik onay UYGULANMADI: {onay_hatasi}")
+    if not (a or b or c):
+        if onay_hatasi:
+            dur("otomatik onay uygulanamadi; diger yamalar zaten var. Hicbir sey yazilmadi.")
         dur("tum yamalar zaten var, degisiklik gerekmiyor.", 3)
 
     try:

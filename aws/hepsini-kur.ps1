@@ -8,7 +8,8 @@
    1. Backend ayarları (DEVIR §2)  — backend-ayarlari.ps1 -Uygula
    2. Lambda eki                   — canlı koda /de/musteri/guncelle ucu ve
                                      kayıtta Cognito öznitelikleri (ad, soyad,
-                                     telefon) eklenir (ekler\yamala.py),
+                                     telefon) ve otomatik onay eklenir
+                                     (ekler\yamala.py),
                                      yedeklenerek yüklenir, sağlık kontrolü
                                      geçmezse otomatik geri alınır
    3. Üretici hesabı               — panele girecek personel (Cognito)
@@ -247,7 +248,7 @@ if ($Atla -notcontains "hesap" -and -not $UreticiEposta) {
 Write-Host ""
 Write-Host "Yapılacaklar:" -ForegroundColor White
 if ($Atla -notcontains "backend") { Bilgi "1. Backend ayarları (izinler, giriş akışı, kaptcha anahtarı)" }
-if ($Atla -notcontains "lambda")  { Bilgi "2. Lambda yamaları: müşteri düzenleme ucu, kayıt öznitelikleri (yedekli, sağlık kontrollü)" }
+if ($Atla -notcontains "lambda")  { Bilgi "2. Lambda yamaları: müşteri düzenleme ucu, kayıt öznitelikleri, otomatik onay (yedekli, sağlık kontrollü)" }
 if ($Atla -notcontains "hesap")   { Bilgi "3. Üretici hesabı: $UreticiEposta" }
 if ($Atla -notcontains "web")     {
   $yontemAdi = @{ S3Web = "S3 statik web sitesi (http)"; Otomatik = "CloudFront; olmazsa Amplify"; CloudFront = "CloudFront"; Amplify = "Amplify" }[$WebYontemi]

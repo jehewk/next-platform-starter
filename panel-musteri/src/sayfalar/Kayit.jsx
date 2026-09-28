@@ -53,7 +53,8 @@ export default function Kayit() {
       const temiz = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, k === "sifre" ? v : v.trim()]));
       temiz.eposta = temiz.eposta.toLowerCase();
       const c = await kayitBasvurusu(temiz);
-      setTamam(c?.mesaj || "Başvurunuz alındı. Onaylandığında giriş yapabilirsiniz.");
+      // Backend otomatik onay açıksa hesap hemen açılır (otomatik_onay: true)
+      setTamam({ acik: !!c?.otomatik_onay });
     } catch (err) {
       setHata(err.message);
     } finally {
@@ -66,10 +67,19 @@ export default function Kayit() {
       <Cerceve>
         <div className="rounded-xl border border-cizgi bg-panel p-6 text-center">
           <CheckCircle2 size={36} className="mx-auto text-saglikli" />
-          <h1 className="mt-4 text-lg font-semibold">Başvurunuz alındı</h1>
-          <p className="mt-2 text-sm leading-relaxed text-soluk">{tamam}</p>
-          <p className="mt-2 text-sm text-soluk">Onaylandığında <b className="text-metin">{f.eposta}</b> ve belirlediğiniz şifreyle giriş yapabilirsiniz.</p>
-          <Link to="/giris" className="dugme-ana mt-6 w-full">Giriş ekranına dön</Link>
+          {tamam.acik ? (
+            <>
+              <h1 className="mt-4 text-lg font-semibold">Hesabınız açıldı</h1>
+              <p className="mt-2 text-sm text-soluk"><b className="text-metin">{f.eposta}</b> ve belirlediğiniz şifreyle hemen giriş yapabilirsiniz.</p>
+              <Link to="/giris" state={{ eposta: f.eposta.trim().toLowerCase() }} className="dugme-ana mt-6 w-full">Giriş yap</Link>
+            </>
+          ) : (
+            <>
+              <h1 className="mt-4 text-lg font-semibold">Başvurunuz alındı</h1>
+              <p className="mt-2 text-sm text-soluk">Onaylandığında <b className="text-metin">{f.eposta}</b> ve belirlediğiniz şifreyle giriş yapabilirsiniz.</p>
+              <Link to="/giris" className="dugme-ana mt-6 w-full">Giriş ekranına dön</Link>
+            </>
+          )}
         </div>
       </Cerceve>
     );

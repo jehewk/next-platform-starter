@@ -188,7 +188,9 @@ try {
     await foto(s, "musteri-08-kayit");
     await tasmaYok(s, "kayıt formu");
     await s.getByRole("button", { name: "Başvuruyu gönder" }).click();
-    kontrol("kayıt: başvuru alındı ekranı", await gorunur(s.getByRole("heading", { name: "Başvurunuz alındı" })));
+    kontrol("kayıt: hesap açıldı ekranı (otomatik onay)", await gorunur(s.getByRole("heading", { name: "Hesabınız açıldı" })));
+    await s.getByRole("link", { name: "Giriş yap" }).click();
+    kontrol("kayıt: giriş e-postası dolu geliyor", (await s.getByLabel("E-posta").inputValue()) === "ayse@ornek.com");
     await b.close();
   }
 

@@ -11,7 +11,7 @@ export default function Giris() {
   const konum = useLocation();
   const donus = konum.state?.donus && konum.state.donus !== "/giris" ? konum.state.donus : "/";
 
-  const [eposta, setEposta] = useState("");
+  const [eposta, setEposta] = useState(konum.state?.eposta || "");
   const [sifre, setSifre] = useState("");
   const [sifreGoster, setSifreGoster] = useState(false);
   const [kod, setKod] = useState("");

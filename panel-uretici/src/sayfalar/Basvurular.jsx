@@ -38,7 +38,7 @@ export default function Basvurular() {
   return (
     <div className="space-y-5">
       <SayfaBasligi baslik="Kayıt başvuruları"
-        aciklama="Müşteri uygulamasından gelen yeni kayıtlar. Onaylanana kadar giriş yapamazlar." />
+        aciklama="Kayıtlar otomatik onaylanır; burada yalnızca otomatik onayı tamamlanamayanlar bekler. Onaylanana kadar giriş yapamazlar." />
 
 
       {yukleniyor ? (
@@ -47,7 +47,7 @@ export default function Basvurular() {
         <HataKutusu hata={hata} yenile={yenile} />
       ) : liste.length === 0 ? (
         <Kart cocuk={
-          <Bos metin="Bekleyen başvuru yok." alt="Yeni kayıtlar burada görünecek." />
+          <Bos metin="Bekleyen başvuru yok." alt="Yeni müşteriler otomatik onaylanıp doğrudan Müşteriler listesine düşer." />
         } />
       ) : (
         <Kart

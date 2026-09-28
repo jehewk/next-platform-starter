@@ -95,6 +95,14 @@ reddediyordur (asıl neden CloudWatch'ta). `.\kayit-teshis.ps1` nedeni gösterir
 `.\kayit-teshis.ps1 -Duzelt` giderir (kendi kendine kaydı açma, eksik
 `custom:musteri_id` özniteliği, istemci okuma/yazma izinleri; önce yedek alır).
 
+**Otomatik onay**: Lambda yaması kayıt başvurusunu anında onaylar (üreticinin
+"Onayla" düğmesiyle aynı iş: Cognito hesabı onaylanır, müşteri kaydı onaylı
+duruma geçer); müşteri hemen giriş yapar. Onay tamamlanamazsa başvuru Başvurular
+sayfasında bekler. Kapatmak için Lambda konsolu > Configuration > Environment
+variables > `OTOMATIK_ONAY` = `0` (kod değişikliği gerekmez; CLI ile
+`update-function-configuration --environment` TÜM değişkenleri değiştirir,
+kullanmayın).
+
 Tekil betikler: `backend-ayarlari.ps1` (kuru çalışma için `-Uygula`'sız),
 `lambda-yukle.ps1` (`-GeriYukle <zip>` ile geri dönüş), `kullanici-olustur.ps1`,
 `panel-yayinla.ps1`.

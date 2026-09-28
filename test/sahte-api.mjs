@@ -242,7 +242,8 @@ export async function sahteIstek(yol, govde = {}, token = "") {
     case "/de/token/yenile":
       return { erisim: token || "T-URETICI" };
     case "/de/musteri/kayit":
-      return { musteri_id: "MST-9001", mesaj: "Basvurunuz alindi. Onaylandiginda giris yapabilirsiniz." };
+      // Canlı backend OTOMATIK_ONAY açıkken (varsayılan) hesap hemen onaylanır
+      return { musteri_id: "MST-9001", otomatik_onay: true, mesaj: "Hesabiniz acildi. Giris yapabilirsiniz." };
     case "/de/ozet": {
       const s = (f) => CIHAZLAR.filter(f).length;
       return { ozet: {
