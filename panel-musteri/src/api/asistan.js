@@ -8,7 +8,9 @@ import { musteriDurumu, musteriMesaji, enerjiAkisi, paketGerilimi, enYuksekSicak
  * Müşteri sohbeti.
  *
  * VITE_ASISTAN_YOLU tanımlıysa soru sunucuya gider (dil modeli; anahtar
- * sunucuda). Yoksa ya da çağrı başarısız olursa, müşterinin KENDİ
+ * sunucuda — aws/asistan-kur.ps1). Her konuda soru sorulabilir; müşterinin
+ * kendi sisteminin kısa özeti (baglam) de gönderilir, böylece sistem
+ * soruları da yanıtlanır. Yoksa ya da çağrı başarısız olursa, müşterinin KENDİ
  * cihazlarının son ölçümleriyle çalışan yerel motor sade dilde yanıtlar.
  * Teknik gerekçe (hücre no, mV) müşteriye gösterilmez — sadeDil.js.
  */
@@ -21,20 +23,57 @@ export const ORNEK_SORULAR = [
   "Bugün ne kadar ürettim?",
   "Garantim ne zaman bitiyor?",
   "Destek talebim ne durumda?",
+  "Akümün ömrünü nasıl uzatırım?",
 ];
 
 export async function soruSor(soru, gecmis = []) {
   if (UZAK_YOL) {
     try {
-      const c = await api.post(UZAK_YOL, { soru, gecmis: gecmis.slice(-12) });
+      const baglam = await baglamOlustur().catch(() => "");
+      const c = await api.post(UZAK_YOL, { soru, gecmis: gecmis.slice(-12), baglam, panel: "musteri" });
       if (c?.yanit) return c.yanit;
-    } catch { /* yerel motora düş */ }
+    } catch (e) {
+      // Günlük sınır ya da zaman aşımı: sunucunun mesajı gösterilir. Diğer
+      // hatalarda (asistan kurulmamış, bağlantı yok) yerel motor yanıtlar.
+      if (e?.durum === 429 || e?.durum === 504) return e.message;
+    }
   }
   const { cihazlar } = await sistemimiGetir();
   return yanitla(soru, cihazlar.filter((c) => ["aktif", "uyari", "arizali"].includes(c.durum)));
 }
 
 const ad = (c) => (c.tip === "aku" ? "Akü" : "İnverter");
+
+/** Dil modeline giden kısa özet: yalnızca bu müşterinin kendi cihazları ve talepleri. */
+async function baglamOlustur() {
+  const { cihazlar } = await sistemimiGetir();
+  const satirlar = [`Tarih: ${new Date().toLocaleString("tr-TR")}`];
+  if (!cihazlar.length) return satirlar.concat("Müşterinin hesabında henüz kurulu cihaz yok.").join("\n");
+  satirlar.push(`Cihazlar (${cihazlar.length}):`);
+  for (const c of cihazlar.slice(0, 20)) {
+    const o = c.sonOlcum || {};
+    const p = [`${ad(c)} ${c.id}`];
+    const ekle = (f) => { try { const v = f(); if (v) p.push(v); } catch { /* eksik alan */ } };
+    ekle(() => c.model && `model ${c.model}`);
+    ekle(() => c.durum && `durum ${c.durum}`);
+    ekle(() => c.saglik != null && `sağlık ${Math.round(c.saglik)}/100`);
+    ekle(() => o.soc != null && `şarj %${Math.round(Number(o.soc))}`);
+    ekle(() => c.kapasiteAh && `kapasite ${c.kapasiteAh} Ah`);
+    ekle(() => { const a = enerjiAkisi(paketGerilimi(o), Number(o.akim)); return a && `${a.metin}${a.kw != null ? ` ${a.kw.toFixed(1)} kW` : ""}`; });
+    ekle(() => { const t = enYuksekSicaklik(o); return t != null && `sıcaklık ${t} °C`; });
+    ekle(() => { const k = o.gunluk_kwh ?? c.gunlukKwh; return k != null && `bugünkü üretim ${Number(k).toFixed(1)} kWh`; });
+    ekle(() => o.zaman && `son ölçüm ${onceMetni(o.zaman)}`);
+    ekle(() => { const g = garantiDurumu(c); return g.bitis && `garanti ${g.bitis.toLocaleDateString("tr-TR")}${g.gecerli ? "'e kadar" : " tarihinde doldu"}`; });
+    ekle(() => c.tahmin && `uyarı: ${musteriMesaji(c.tahmin, c.saglik).baslik}`);
+    satirlar.push("- " + p.join("; "));
+  }
+  const talepler = await garantiListesi().catch(() => []);
+  if (talepler.length) {
+    satirlar.push("Destek talepleri:");
+    talepler.slice(0, 5).forEach((t) => satirlar.push(`- ${t.cihazId}: ${TALEP_DURUMU[t.durum]?.ad || t.durum}${t.aciklama ? ` — ${String(t.aciklama).slice(0, 120)}` : ""}`));
+  }
+  return satirlar.join("\n");
+}
 
 async function yanitla(soru, cihazlar) {
   const s = soru.toLocaleLowerCase("tr");

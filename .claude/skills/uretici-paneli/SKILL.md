@@ -45,6 +45,22 @@ hata diğerinde de düzeltilmeli. Mimari ve yayın: kök `YAYIN.md`.
   backend şeklinde yanıt verir; yeni uç eklersen oraya da ekle.
 - Backend zamanı UTC ama `Z` eki yok: her zaman `utcTarih()` ile oku.
 
+## Sohbet asistanı (dil modeli)
+
+- İstemci: `src/api/asistan.js` (iki uygulamada da). `VITE_ASISTAN_YOLU=/de/asistan`
+  tanımlıysa soru + son 12 mesaj + `baglam` (kullanıcının KENDİ verisinin kısa özeti,
+  `baglamOlustur`) + `panel` gönderilir. 429/504'te sunucunun mesajı gösterilir;
+  diğer hatalarda yerel motor (`yanitla`) yanıtlar.
+- Sunucu: `aws/ekler/asistan/dennis_asistan.py` Lambda katmanında (Anthropic Python
+  SDK, `claude-opus-5-5`, düşük efor, web araması, `fallbacks: "default"`). Ana
+  Lambda'ya yalnızca yönlendirme eklenir (`aws/ekler/yamala.py`, yama E). Kişi başı
+  ve toplam günlük soru sınırı DynamoDB `dennis-asistan-kota` tablosunda; sayaç
+  çalışmazsa uç kapalı kalır.
+- Kurulum/güncelleme: `aws/asistan-kur.ps1` (katmanı Lambda'nın Python sürümü ve
+  mimarisi için derler; modül değişince yeni katman sürümü yayımlar).
+- Test: `test/sahte-api.mjs` `/de/asistan` bağlamı yansıtır; e2e kalın yazı, kaynak
+  bağlantısı ve günlük sınır mesajını denetler.
+
 ## Doğrulama
 
 ```bash

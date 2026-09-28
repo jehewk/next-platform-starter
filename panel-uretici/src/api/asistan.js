@@ -12,7 +12,9 @@ import { garantiDurumu, sureMetni, tarihTR, KAYNAK_ADI, DURUM_ADI } from "../ver
  * bağlantısı; API anahtarı sunucuda kalır). Tanımlı değilse ya da çağrı
  * başarısız olursa, sistem verisi üzerinde çalışan yerel motor yanıtlar.
  *
- * Beklenen backend sözleşmesi:  POST {soru, gecmis:[{rol, metin}]} → {yanit}
+ * Backend sözleşmesi (aws/asistan-kur.ps1 kurar):
+ *   POST {soru, gecmis:[{rol, metin}], baglam, panel} → {yanit} | {hata}
+ * Her konuda soru sorulabilir; panelin kısa özeti (baglam) de gönderilir.
  */
 
 const UZAK_YOL = import.meta.env.VITE_ASISTAN_YOLU;
@@ -23,6 +25,7 @@ export const ORNEK_SORULAR = [
   "Hangi partide arıza yoğunluğu var?",
   "Garantisi yakında dolan cihazlar",
   "Depoda kaç ürün var?",
+  "LiFePO4 hücre dengeleme nasıl çalışır?",
 ];
 
 let onbellek = null;
@@ -42,12 +45,58 @@ async function sistemVerisi() {
 export async function soruSor(soru, gecmis = []) {
   if (UZAK_YOL) {
     try {
-      const c = await api.post(UZAK_YOL, { soru, gecmis: gecmis.slice(-12) });
+      const baglam = await baglamOlustur(soru).catch(() => "");
+      const c = await api.post(UZAK_YOL, { soru, gecmis: gecmis.slice(-12), baglam, panel: "uretici" });
       if (c?.yanit) return c.yanit;
-    } catch { /* yerel motora düş */ }
+    } catch (e) {
+      // Günlük sınır ya da zaman aşımı: sunucunun mesajı gösterilir. Diğer
+      // hatalarda (asistan kurulmamış, bağlantı yok) yerel motor yanıtlar.
+      if (e?.durum === 429 || e?.durum === 504) return e.message;
+    }
   }
   const veri = await sistemVerisi();
   return yanitla(soru, veri);
+}
+
+/** Dil modeline giden panel özeti; soru bir seri numarası içeriyorsa o cihazın ayrıntısı da eklenir. */
+async function baglamOlustur(soru) {
+  const { cihazlar, musteriler, partiler, talepler, isler } = await sistemVerisi();
+  const say = (f) => cihazlar.filter(f).length;
+  const musteriAd = (id) => { const m = musteriler.find((x) => x.id === id); return m ? `${m.ad} (${m.il})` : "-"; };
+  const s = [`Tarih: ${new Date().toLocaleString("tr-TR")}`];
+  s.push(`Ürünler: ${cihazlar.length} kayıtlı (${say((c) => c.tip === "aku")} akü, ${say((c) => c.tip === "inverter")} inverter); ` +
+    `sahada ${say((c) => c.musteriId)}, depoda ${say((c) => c.durum === "depoda")}, sevkte ${say((c) => c.durum === "sevkte")}; ` +
+    `arızalı ${say((c) => c.durum === "arizali")}, izlemede ${say((c) => c.durum === "uyari")}.`);
+  const uretim = cihazlar.filter((c) => c.tip === "inverter" && c.musteriId).reduce((t, c) => t + (c.gunlukKwh || 0), 0);
+  s.push(`Müşteri: ${musteriler.length}. Üretim partisi: ${partiler.length}. Bugünkü toplam üretim: ${uretim.toFixed(1)} kWh.`);
+  const partiSira = [...partiler].map((p) => ({ ...p, oran: p.kurulu ? (p.arizali / p.kurulu) * 100 : 0 })).sort((a, b) => b.oran - a.oran);
+  if (partiSira.length) {
+    s.push("Arıza oranı en yüksek partiler:");
+    partiSira.slice(0, 5).forEach((p) => s.push(`- ${p.kod} (${p.tip}): ${p.adet} üretildi, ${p.kurulu} kurulu, ${p.arizali} arızalı (%${p.oran.toFixed(1)})`));
+  }
+  const sorunlu = cihazlar.filter((c) => ["arizali", "uyari"].includes(c.durum));
+  if (sorunlu.length) {
+    s.push(`Sorunlu cihazlar (${sorunlu.length}):`);
+    sorunlu.slice(0, 25).forEach((c) => s.push(`- ${c.id} ${c.model || ""}: ${DURUM_ADI[c.durum] || c.durum}` +
+      `${c.saglik != null ? `, sağlık ${c.saglik}` : ""}, müşteri ${musteriAd(c.musteriId)}` +
+      `${c.tahmin ? `, öngörü: ${c.tahmin.bilesen}${c.tahmin.kalanSaat != null ? ` (${sureMetni(c.tahmin.kalanSaat)})` : ""}` : ""}`));
+  }
+  const acik = talepler.filter((t) => t.durum === "inceleniyor");
+  s.push(`Garanti talepleri: ${talepler.length} (${acik.length} inceleniyor).`);
+  acik.slice(0, 10).forEach((t) => s.push(`- ${t.cihazId}${t.aciklama ? `: ${String(t.aciklama).slice(0, 120)}` : ""}`));
+  if (isler.length) s.push(`Arıza öngörüsü olan cihaz: ${isler.length}.`);
+  const kod = soru.match(/\b(AKU|INV)-D\d{2}-\d{4}\b/i)?.[0]?.toUpperCase();
+  if (kod) {
+    try {
+      const c = await cihazBul(kod);
+      const g = garantiDurumu(c);
+      s.push(`Sorulan cihaz ${c.id}: model ${c.model}, durum ${DURUM_ADI[c.durum] || c.durum}` +
+        `${c.saglik != null ? `, sağlık ${c.saglik}` : ""}, müşteri ${musteriAd(c.musteriId)}, üretim ${tarihTR(c.uretim)}, ` +
+        `parti ${c.parti}, garanti ${g.gecerli ? `${Math.round(g.kalanGun / 30)} ay kaldı` : "doldu"}` +
+        `${c.tahmin ? `, öngörü: ${c.tahmin.bilesen} — ${c.tahmin.gerekce}` : ""}.`);
+    } catch { s.push(`Sorulan cihaz ${kod} kayıtlarda bulunamadı.`); }
+  }
+  return s.join("\n");
 }
 
 /* ═══════════ yerel yanıt motoru ═══════════ */

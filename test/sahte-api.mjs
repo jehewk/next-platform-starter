@@ -230,6 +230,19 @@ export async function sahteIstek(yol, govde = {}, token = "") {
   const cihaz = (id) => CIHAZLAR.find((c) => c.cihaz_id === id && gorunur(c));
 
   switch (yolu) {
+    case "/de/asistan": {
+      // Gerçek uç (aws/ekler/asistan/dennis_asistan.py) dil modeline gider; burada
+      // istemcinin gönderdiği bağlamı geri yansıtan sahte yanıt.
+      if (/sınır testi/i.test(govde.soru || "")) {
+        throw Object.assign(new Error("Bugünkü soru hakkınız doldu; yarın tekrar sorabilirsiniz."), { durum: 429 });
+      }
+      if (!govde.baglam || !["musteri", "uretici"].includes(govde.panel)) {
+        throw Object.assign(new Error("baglam/panel eksik"), { durum: 400 });
+      }
+      const cihazSatiri = govde.baglam.split("\n").find((x) => x.startsWith("- ")) || "";
+      return { yanit: `**Asistan yanıtı** (${govde.panel}, geçmiş ${govde.gecmis?.length ?? 0}):\n` +
+        `${cihazSatiri}\n\nKaynaklar:\n- https://ornek.org/lfp-bakim` };
+    }
     case "/de/kaptcha":
       return { svg: '<svg xmlns="http://www.w3.org/2000/svg" width="150" height="46"><rect width="150" height="46" fill="#F8FAFC"/><text x="22" y="31" font-size="24" font-family="monospace" fill="#0F172A">k4Tm9</text></svg>',
                token: "kaptcha-test", saniye: 30 };

@@ -158,7 +158,28 @@ function Bicimli({ metin }) {
   );
 }
 
+// Web adresleri (asistanın kaynakları) yeni sekmede açılır; sondaki noktalama bağlantıya dahil edilmez.
+const ADRES = /(https?:\/\/[^\s<>"'()]*[^\s<>"'().,;:!?])/;
+const KALIN = /\*\*([^*\n]+)\*\*/;
+
 function Baglantili({ metin }) {
+  return metin.split(ADRES).map((p, i) =>
+    i % 2 === 1 ? (
+      <a key={i} href={p} target="_blank" rel="noopener noreferrer"
+        className="break-all text-bilgi underline decoration-bilgi/40 underline-offset-2 hover:decoration-bilgi">
+        {p.replace(/^https?:\/\/(www\.)?/, "")}
+      </a>
+    ) : <Kalinli key={i} metin={p} />
+  );
+}
+
+function Kalinli({ metin }) {
+  return metin.split(KALIN).map((p, i) =>
+    i % 2 === 1 ? <strong key={i} className="font-semibold text-metin"><Serili metin={p} /></strong> : <Serili key={i} metin={p} />
+  );
+}
+
+function Serili({ metin }) {
   const parcalar = metin.split(SERI);
   return parcalar.map((p, i) =>
     i % 2 === 1 ? (

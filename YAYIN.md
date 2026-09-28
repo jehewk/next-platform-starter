@@ -123,6 +123,24 @@ sahte bir AWS CLI ile uçtan uca test edildi (ilk kurulum, ikinci çalıştırma
 hiçbir şeyin yeniden oluşturulmaması, bozuk kodda otomatik geri alma,
 CloudFront reddinde Amplify'a geçiş).
 
+## Sohbet asistanı (her soruya yanıt)
+
+`aws\asistan-kur.ps1` sohbeti Claude'a bağlar: veri ya da cihaz olmasa da her konuda
+yanıt verir, güncel bilgi için web araması yapar, kullanıcının kendi sistem özetini
+bilir. Anthropic API anahtarı gerekir (console.anthropic.com > API Keys); betik sorar
+(ekranda görünmez), ücretsiz bir çağrıyla doğrular ve Lambda ortamına yazar.
+
+```powershell
+.\asistan-kur.ps1                                        # varsayılan: claude-opus-5-5
+.\asistan-kur.ps1 -KullaniciGunlukLimit 50 -ToplamGunlukLimit 500
+.\asistan-kur.ps1 -AnahtarYenile                         # anahtarı değiştir
+```
+
+Maliyet: soru başına ~2-4 cent + web araması başına ~1 cent. Kişi başı (30) ve toplam
+(300) günlük soru sınırı vardır; varsayılanlarla en kötü durum ~270 USD/ay. Gerçek
+tavan için Anthropic Console > Settings > Limits'ten aylık harcama sınırı koyun.
+Daha ucuz model: `-Model claude-sonnet-5-5` (~yarı fiyat) ya da `claude-haiku-4-5`.
+
 ## Maliyet koruması
 
 AWS'de kesin bir harcama tavanı yoktur; `aws\maliyet-koruma.ps1` uyarı ve fren

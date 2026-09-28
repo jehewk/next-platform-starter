@@ -1,0 +1,240 @@
+﻿<#
+.SYNOPSIS
+  Uygulamalardaki sohbeti gerçek bir dil modeline (Claude) bağlar: her soruya yanıt.
+
+.DESCRIPTION
+  Sohbet bugün yalnızca yerel motorla, sınırlı sorulara yanıt veriyor. Bu betik
+  POST /de/asistan ucunu kurar; soru, kullanıcının kendi sistem özetiyle
+  birlikte Claude'a gider. Veri ya da cihaz olmasa da her konuda yanıt verir;
+  güncel bilgi için web araması yapabilir. Uç yanıt veremezse uygulamalar yine
+  yerel motora düşer.
+
+   1) Anthropic API anahtarı — sorulur (ekranda görünmez; bu bilgisayarda
+      ANTHROPIC_API_KEY tanımlıysa o kullanılır), ücretsiz bir
+      çağrıyla doğrulanır, Lambda ortamına yazılır. Sohbete/dosyaya yazılmaz.
+   2) Günlük soru sayacı — DynamoDB tablosu dennis-asistan-kota (+ Lambda izni)
+   3) Lambda katmanı dennis-asistan — Anthropic SDK + ekler\asistan\dennis_asistan.py,
+      Lambda'nın Python sürümü/mimarisi için derlenir
+   4) Lambda ayarları — katman eklenir, zaman aşımı en az 30 sn
+   5) Lambda yaması — /de/asistan yönlendirmesi (yedekli, sağlık kontrollü)
+   6) Uygulamalar — VITE_ASISTAN_YOLU=/de/asistan ile derlenip yayınlanır
+
+  Maliyet: soru başına ~2-4 cent (claude-opus-5-5, düşük efor) + web araması
+  başına ~1 cent. Kişi başı ve toplam GÜNLÜK soru sınırı vardır; sayaç
+  çalışmazsa asistan kapalı kalır (sınırsız çalışmaz). Ayrıca Anthropic
+  Console > Settings > Limits'ten aylık harcama tavanı koyun: AWS'den farklı
+  olarak orada gerçek bir üst sınır vardır.
+
+  Tekrar çalıştırmak güvenlidir: değişmeyen hiçbir şey yeniden yapılmaz.
+
+.EXAMPLE
+  .\asistan-kur.ps1
+  .\asistan-kur.ps1 -Model claude-sonnet-5-5 -ToplamGunlukLimit 500
+  .\asistan-kur.ps1 -AnahtarYenile              # API anahtarını değiştir
+#>
+[CmdletBinding()]
+param(
+  [string]$Model = "claude-opus-5-5",
+  [ValidateSet("low", "medium", "high")][string]$Efor = "low",
+  [ValidateRange(1, 10000)][int]$KullaniciGunlukLimit = 30,
+  [ValidateRange(1, 1000000)][int]$ToplamGunlukLimit = 300,
+  [ValidateRange(0, 10)][int]$WebArama = 3,
+  [switch]$AnahtarYenile,
+  [switch]$Onayla,
+  [switch]$TarayiciAcma,
+  [string]$ApiTaban,
+  [string]$Bolge = "eu-central-1",
+  [string]$Profil = $env:AWS_PROFILE
+)
+$ErrorActionPreference = "Stop"
+. "$PSScriptRoot\ortak.ps1"
+if (-not $ApiTaban) { $ApiTaban = $API_TABAN_VARSAYILAN }
+
+$SDK_SURUMU   = "1.9.0"                      # sınanan Anthropic Python SDK sürümü
+$KATMAN       = "dennis-asistan"
+$KOTA_TABLOSU = "dennis-asistan-kota"
+$MODUL        = Join-Path (Join-Path (Join-Path $PSScriptRoot "ekler") "asistan") "dennis_asistan.py"
+$ortakParam = @{ Bolge = $Bolge }
+if ($Profil) { $ortakParam.Profil = $Profil }
+
+function PyCalistir([string[]]$argumanlar) {
+  $eski = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+  $cikti = & $PYTHON[0] @(@($PYTHON | Select-Object -Skip 1) + $argumanlar) 2>&1
+  $kod = $LASTEXITCODE; $ErrorActionPreference = $eski
+  return @{ Kod = $kod; Cikti = ($cikti | Out-String).Trim() }
+}
+
+# ── Ön kontrol ────────────────────────────────────────────────────────────
+Adim "Ön kontrol"
+HesapDogrula | Out-Null
+$PYTHON = PythonBul
+if (-not $PYTHON) { throw "Python bulunamadı. python.org'dan Python 3 kurun (katman derlemesi için gerekli)." }
+if (-not (Test-Path $MODUL)) { throw "Asistan modülü yok: $MODUL" }
+$yap = Cagir lambda get-function-configuration --function-name $LAMBDA
+if ("$($yap.Runtime)" -notmatch '^python(3\.\d+)$') { throw "Lambda çalışma ortamı Python değil ($($yap.Runtime))." }
+$pySurum = $Matches[1]
+$mimari = if (@($yap.Architectures) -contains "arm64") { "arm64" } else { "x86_64" }
+$platform = if ($mimari -eq "arm64") { "manylinux2014_aarch64" } else { "manylinux2014_x86_64" }
+$anahtarVar = [bool]($yap.Environment -and $yap.Environment.Variables -and $yap.Environment.Variables.PSObject.Properties["ANTHROPIC_API_KEY"])
+Tamam "Lambda: python$pySurum, $mimari, zaman aşımı $($yap.Timeout) sn, bellek $($yap.MemorySize) MB"
+
+$soruBasi = 0.03; $aylikEnFazla = [math]::Round($ToplamGunlukLimit * $soruBasi * 30)
+Write-Host "`nYapılacaklar:" -ForegroundColor White
+Bilgi ("1. Anthropic API anahtarı " + $(if ($anahtarVar -and -not $AnahtarYenile) { "(zaten tanımlı; değiştirmek için -AnahtarYenile)" } else { "sorulacak" }))
+Bilgi "2. Günlük soru sayacı: kişi başı $KullaniciGunlukLimit, toplam $ToplamGunlukLimit soru/gün"
+Bilgi "3. Lambda katmanı $KATMAN (Anthropic SDK $SDK_SURUMU + asistan modülü)"
+Bilgi "4. Model $Model, efor $Efor, web araması soru başına en fazla $WebArama"
+Bilgi "5. Lambda yaması (/de/asistan) ve iki uygulamanın yeniden yayını"
+Bilgi "En kötü durumda (her gün sınır dolarsa) aylık ~$aylikEnFazla USD. Gerçek kullanım genelde çok daha az."
+if (-not $Onayla) {
+  $cevap = Read-Host "`nDevam edilsin mi? (E/H)"
+  if ($cevap -notmatch '^[EeYy]') { Write-Host "İptal edildi."; exit 0 }
+}
+
+# ── 1) API anahtarı ───────────────────────────────────────────────────────
+$yeniAnahtar = $null
+$yerel = Join-Path ([IO.Path]::GetTempPath()) ("de-asistan-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+if (-not $anahtarVar -or $AnahtarYenile) {
+  Adim "1/6 Anthropic API anahtarı"
+  Bilgi "console.anthropic.com > API Keys'ten bir anahtar oluşturun (sk-ant- ile başlar)."
+  Bilgi "Aylık harcama tavanını da oradan koyun: Settings > Limits."
+  if ($env:ANTHROPIC_API_KEY) {
+    # Bu bilgisayarın ortamında zaten tanımlıysa o kullanılır (ör. ant/SDK kurulumu)
+    $yeniAnahtar = $env:ANTHROPIC_API_KEY.Trim()
+    Bilgi "bu bilgisayardaki ANTHROPIC_API_KEY kullanılıyor"
+  } else {
+    $guvenli = Read-Host "  API anahtarı (ekranda görünmez)" -AsSecureString
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($guvenli)
+    try { $yeniAnahtar = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr).Trim() }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+  }
+  if ($yeniAnahtar -notmatch '^sk-ant-') { throw "Bu bir Anthropic API anahtarına benzemiyor (sk-ant- ile başlamalı)." }
+
+  # Ücretsiz doğrulama: model bilgisini okumak anahtarı ve modele erişimi sınar
+  Bilgi "anahtar doğrulanıyor (ücretsiz çağrı)..."
+  $r = PyCalistir @("-m", "pip", "install", "anthropic==$SDK_SURUMU", "--target", (Join-Path $yerel "yerel"),
+                    "--quiet", "--disable-pip-version-check", "--no-warn-script-location")
+  if ($r.Kod -ne 0) { throw "Anthropic SDK yerel olarak kurulamadı: $($r.Cikti)" }
+  $betik = Join-Path $yerel "denetle.py"
+  [IO.File]::WriteAllText($betik, @'
+import os, sys
+sys.path.insert(0, os.environ["DE_YOL"])
+import anthropic
+try:
+    anthropic.Anthropic(api_key=os.environ["DE_ANAHTAR"], max_retries=1, timeout=20).models.retrieve(os.environ["DE_MODEL"])
+except anthropic.AuthenticationError:
+    sys.exit(2)
+except anthropic.NotFoundError:
+    sys.exit(3)
+except anthropic.APIConnectionError:
+    sys.exit(5)
+except anthropic.APIStatusError as e:
+    print(e.status_code)
+    sys.exit(4)
+'@, (New-Object Text.UTF8Encoding($false)))
+  $env:DE_YOL = Join-Path $yerel "yerel"; $env:DE_ANAHTAR = $yeniAnahtar; $env:DE_MODEL = $Model
+  try { $r = PyCalistir @($betik) }
+  finally { Remove-Item Env:DE_ANAHTAR, Env:DE_YOL, Env:DE_MODEL -ErrorAction SilentlyContinue }
+  switch ($r.Kod) {
+    0 { Tamam "anahtar geçerli, $Model erişilebilir" }
+    2 { throw "API anahtarı geçersiz." }
+    3 { throw "$Model bu anahtarla kullanılamıyor (-Model ile başka model deneyin)." }
+    5 { throw "api.anthropic.com'a bağlanılamadı; internet bağlantısını kontrol edin." }
+    default { throw "Anahtar doğrulanamadı: $($r.Cikti)" }
+  }
+} else { Adim "1/6 Anthropic API anahtarı"; Tamam "Lambda'da tanımlı (değer gösterilmez)" }
+
+# ── 2) Günlük sayaç tablosu + izin ────────────────────────────────────────
+Adim "2/6 Günlük soru sayacı ($KOTA_TABLOSU)"
+if (Dene dynamodb describe-table --table-name $KOTA_TABLOSU) { Tamam "tablo mevcut" }
+else {
+  Cagir dynamodb create-table --table-name $KOTA_TABLOSU --billing-mode PAY_PER_REQUEST `
+    --attribute-definitions "AttributeName=anahtar,AttributeType=S" --key-schema "AttributeName=anahtar,KeyType=HASH" | Out-Null
+  Cagir dynamodb wait table-exists --table-name $KOTA_TABLOSU | Out-Null
+  Tamam "tablo oluşturuldu"
+}
+$ttl = (Cagir dynamodb describe-time-to-live --table-name $KOTA_TABLOSU).TimeToLiveDescription
+if ($ttl.TimeToLiveStatus -notin @("ENABLED", "ENABLING")) {
+  Cagir dynamodb update-time-to-live --table-name $KOTA_TABLOSU --time-to-live-specification "Enabled=true,AttributeName=silinme" | Out-Null
+}
+Tamam "eski sayaçlar 3 gün sonra kendiliğinden silinir"
+if (Dene iam get-role-policy --role-name $LAMBDA_ROLU --policy-name AsistanKota) { Tamam "Lambda izni mevcut" }
+else {
+  $pol = JsonDosyasi @{ Version = "2012-10-17"; Statement = @(@{ Effect = "Allow"; Action = @("dynamodb:UpdateItem")
+    Resource = "arn:aws:dynamodb:${Bolge}:${HESAP}:table/$KOTA_TABLOSU" }) }
+  Cagir iam put-role-policy --role-name $LAMBDA_ROLU --policy-name AsistanKota --policy-document "file://$pol" | Out-Null
+  Tamam "Lambda'ya yalnızca bu tabloya sayaç yazma izni verildi"
+}
+
+# ── 3) Lambda katmanı ─────────────────────────────────────────────────────
+Adim "3/6 Lambda katmanı ($KATMAN)"
+$ozet = (Get-FileHash $MODUL -Algorithm SHA256).Hash.Substring(0, 12).ToLower()
+$imza = "sdk=$SDK_SURUMU modul=$ozet py=$pySurum $mimari"
+$katmanArn = $null
+$son = @((Dene lambda list-layer-versions --layer-name $KATMAN).LayerVersions) | Select-Object -First 1
+if ($son -and $son.Description -eq $imza) { $katmanArn = $son.LayerVersionArn; Tamam "güncel: sürüm $($son.Version)" }
+else {
+  $kat = Join-Path $yerel "katman"; $py = Join-Path $kat "python"
+  New-Item -ItemType Directory -Force -Path $py | Out-Null
+  Bilgi "Anthropic SDK $SDK_SURUMU derleniyor (python$pySurum, $platform)..."
+  $r = PyCalistir @("-m", "pip", "install", "anthropic==$SDK_SURUMU", "--target", $py, "--platform", $platform,
+                    "--implementation", "cp", "--python-version", $pySurum, "--only-binary=:all:",
+                    "--no-compile", "--quiet", "--disable-pip-version-check", "--no-warn-script-location")
+  if ($r.Kod -ne 0) { throw "SDK derlenemedi: $($r.Cikti)" }
+  Remove-Item (Join-Path $py "bin") -Recurse -Force -ErrorAction SilentlyContinue
+  Copy-Item $MODUL $py
+  $zip = Join-Path $yerel "katman.zip"
+  ZipOlustur $kat $zip
+  Bilgi ("katman boyutu: {0:N1} MB" -f ((Get-Item $zip).Length / 1MB))
+  $yeni = Cagir lambda publish-layer-version --layer-name $KATMAN --description $imza --zip-file "fileb://$zip" `
+    --compatible-runtimes $yap.Runtime --compatible-architectures $mimari
+  $katmanArn = $yeni.LayerVersionArn
+  Tamam "yayımlandı: sürüm $($yeni.Version)"
+}
+
+# ── 4) Lambda ayarları ────────────────────────────────────────────────────
+Adim "4/6 Lambda ayarları"
+$katmanlar = @(@($yap.Layers | ForEach-Object { $_.Arn }) | Where-Object { $_ -and $_ -notmatch ":layer:${KATMAN}:" }) + $katmanArn
+$mevcutKatmanlar = @($yap.Layers | ForEach-Object { $_.Arn })
+$arg = @()
+if ((@($mevcutKatmanlar) -join ",") -ne ($katmanlar -join ",")) { $arg += @("--layers") + $katmanlar }
+if ([int]$yap.Timeout -lt 30) { $arg += @("--timeout", "30") }   # API Gateway 29 sn'de keser
+if ($arg.Count) {
+  Cagir lambda wait function-updated --function-name $LAMBDA | Out-Null
+  Cagir lambda update-function-configuration --function-name $LAMBDA @arg | Out-Null
+  Cagir lambda wait function-updated --function-name $LAMBDA | Out-Null
+  Tamam "katman eklendi$(if ($arg -contains '--timeout') { ', zaman aşımı 30 sn' })"
+} else { Tamam "zaten güncel" }
+if ([int]$yap.MemorySize -lt 256) { Uyari "Lambda belleği $($yap.MemorySize) MB; asistan yavaş kalırsa konsoldan 256 MB yapın." }
+$ortam = @{
+  ASISTAN_MODEL = $Model; ASISTAN_EFFORT = $Efor; ASISTAN_KOTA_TABLOSU = $KOTA_TABLOSU
+  ASISTAN_KULLANICI_LIMIT = "$KullaniciGunlukLimit"; ASISTAN_TOPLAM_LIMIT = "$ToplamGunlukLimit"; ASISTAN_WEB_ARAMA = "$WebArama"
+}
+if ($yeniAnahtar) { $ortam.ANTHROPIC_API_KEY = $yeniAnahtar }
+if (LambdaOrtamGuncelle $ortam) { Tamam "ortam değişkenleri güncellendi (diğerleri korundu)" } else { Tamam "ortam değişkenleri güncel" }
+$yeniAnahtar = $null
+Remove-Item $yerel -Recurse -Force -ErrorAction SilentlyContinue
+
+# ── 5-6) Lambda yaması + uygulamalar ──────────────────────────────────────
+Adim "5/6 Uygulamalarda asistan ucu (VITE_ASISTAN_YOLU)"
+foreach ($panel in "panel-musteri", "panel-uretici") {
+  $kok = Join-Path (Split-Path $PSScriptRoot -Parent) $panel
+  $envDosya = Join-Path $kok ".env"
+  if (-not (Test-Path $envDosya)) { Copy-Item (Join-Path $kok ".env.example") $envDosya }
+  $satirlar = @(Get-Content $envDosya -Encoding UTF8)
+  if ($satirlar -match '^VITE_ASISTAN_YOLU=') { $satirlar = $satirlar -replace '^VITE_ASISTAN_YOLU=.*$', 'VITE_ASISTAN_YOLU=/de/asistan' }
+  else { $satirlar += 'VITE_ASISTAN_YOLU=/de/asistan' }
+  [IO.File]::WriteAllText($envDosya, (($satirlar -join "`n") + "`n"), (New-Object Text.UTF8Encoding($false)))
+  Tamam "$panel/.env"
+}
+
+Adim "6/6 Lambda yaması ve yayın"
+$p = @{ Atla = @("backend", "hesap"); Onayla = $true; ApiTaban = $ApiTaban } + $ortakParam
+if ($TarayiciAcma) { $p.TarayiciAcma = $true }
+& (Join-Path $PSScriptRoot "hepsini-kur.ps1") @p
+if ($LASTEXITCODE) { throw "Lambda yaması ya da yayın başarısız; yukarıdaki özete bakın." }
+
+Write-Host "`nAsistan hazır. Uygulamada Sohbet'ten her konuda soru sorabilirsiniz." -ForegroundColor Green
+Bilgi 'Kullanım ve maliyet: CloudWatch günlüğünde {"asistan": ...} satırları (token ve arama sayısı).'
+Bilgi "Sınırları değiştirmek: .\asistan-kur.ps1 -KullaniciGunlukLimit 50 -ToplamGunlukLimit 500"
+exit 0

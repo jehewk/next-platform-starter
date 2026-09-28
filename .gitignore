@@ -48,3 +48,6 @@ aws/kurulum-durumu.json
 
 # Uygulama ortam dosyaları
 .env
+
+# Python önbelleği
+__pycache__/

@@ -24,7 +24,7 @@ mkdirSync(CIKTI, { recursive: true });
 const sunucular = [];
 function baslat(klasor, port) {
   const p = spawn("npx", ["vite", "--port", String(port), "--strictPort"], {
-    cwd: join(kok, klasor), env: { ...process.env, VITE_API_URL: "https://api.test/prod" }, stdio: "pipe",
+    cwd: join(kok, klasor), env: { ...process.env, VITE_API_URL: "https://api.test/prod", VITE_ASISTAN_YOLU: "/de/asistan" }, stdio: "pipe",
     detached: true,   // kendi süreç grubu: npx'in başlattığı vite de birlikte kapatılabilsin
   });
   sunucular.push(p);
@@ -129,6 +129,11 @@ try {
     await foto(s, `${on}-05-akuler`); await tasmaYok(s, `${on} aküler`);
     await s.goto(U + "/uretim"); await bekle(s); await tasmaYok(s, `${on} üretim`);
     await s.goto(U + "/basvurular"); await bekle(s); await tasmaYok(s, `${on} başvurular`);
+    await s.goto(U + "/asistan"); await bekle(s);
+    await s.getByRole("button", { name: "LiFePO4 hücre dengeleme nasıl çalışır?" }).first().click();
+    await bekle(s, 1500);
+    kontrol(`${on}: üretici asistanı sunucudan yanıtladı`, await s.getByText("(uretici, geçmiş 0)").first().isVisible());
+    await tasmaYok(s, `${on} asistan`);
     await s.goto(U + "/aku/AKU-D24-0071"); await bekle(s, 1400);
     kontrol(`${on}: akü detayında NaN/undefined yok`, !/NaN|undefined/.test(await s.locator("main").innerText()));
     await foto(s, `${on}-06-aku`); await tasmaYok(s, `${on} akü detay`);
@@ -159,6 +164,14 @@ try {
     await s.getByRole("button", { name: "Akümde ne kadar enerji var?" }).click();
     await bekle(s, 1500);
     kontrol(`${on}: sohbet yanıtı geldi`, await s.getByText(/şarj %\d+/).first().isVisible());
+    kontrol(`${on}: asistan yanıtı sunucudan (bağlamla)`, await s.getByText("Asistan yanıtı").first().isVisible());
+    kontrol(`${on}: kalın yazı işlendi`, (await s.locator("main strong", { hasText: "Asistan yanıtı" }).count()) > 0);
+    kontrol(`${on}: kaynak bağlantısı yeni sekmede`,
+      (await s.locator('main a[href="https://ornek.org/lfp-bakim"][target="_blank"]').count()) > 0);
+    await s.getByRole("textbox").last().fill("sınır testi");
+    await s.keyboard.press("Enter");
+    await bekle(s, 1500);
+    kontrol(`${on}: günlük sınır mesajı gösterildi`, await s.getByText("Bugünkü soru hakkınız doldu").first().isVisible());
     kontrol(`${on}: sohbette NaN/undefined yok`, !/NaN|undefined/.test(await s.locator("main").innerText()));
     await foto(s, `${on}-05-sohbet`); await tasmaYok(s, `${on} sohbet`);
 

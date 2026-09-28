@@ -44,6 +44,11 @@ Yamalar (her biri bağımsız; zaten varsa atlanır):
   · Ölçüm tablosu cihaz listesiyle aynı tabloysa (cihaz kayıtları silinirdi)
     yama uygulanmaz.
 
+ E) Sohbet asistanı ucu: POST /de/asistan
+  · Yanıtı Lambda katmanındaki dennis_asistan modülü üretir (aws/asistan-kur.ps1).
+    Katman yoksa ya da modül yüklenemezse uç 503 döner; Lambda'nın geri
+    kalanı etkilenmez.
+
 Sonuç Python derleyicisinden geçirilir; hata varsa hiçbir şey yazılmaz.
 Girdi dosyasına asla dokunmaz.
 """
@@ -357,6 +362,34 @@ except Exception as _e:
     return kaynak, True
 
 
+def yama_asistan(kaynak):
+    """E) /de/asistan ucu. Döner: (yeni_kaynak, uygulandi_mi)."""
+    if re.search(r"""if\s+path\s*==\s*['"]/de/asistan['"]""", kaynak):
+        print("YAMA: asistan ucu zaten var.")
+        return kaynak, False
+    h = re.search(r"^def\s+lambda_handler\s*\(\s*(\w+)", kaynak, re.M)
+    d = re.search(r"""^(\w+)\s*=\s*boto3\.resource\(\s*['"]dynamodb['"]""", kaynak, re.M)
+    capa = re.search(
+        r"""^([ \t]*)if\s+path\s*==\s*['"]/de/musteri/olustur['"]\s+and\s+method\s*==\s*['"]POST['"]\s*:""",
+        kaynak, re.M)
+    if not (h and d and capa):
+        raise YamaAtla("lambda_handler, boto3.resource('dynamodb') ya da /de/musteri/olustur bulunamadı.")
+    if not re.search(r"^\s*body\s*=", kaynak[h.end():], re.M):
+        raise YamaAtla("işleyicide 'body' değişkeni bulunamadı.")
+    g = capa.group(1)
+    blok = (f"{g}if path == '/de/asistan' and method == 'POST':\n"
+            f"{g}    try:\n"
+            f"{g}        import dennis_asistan  # Lambda katmani (aws/asistan-kur.ps1)\n"
+            f"{g}    except Exception as e:\n"
+            f"{g}        print(f\"asistan yuklenemedi: {{e}}\")\n"
+            f"{g}        return response(503, {{'hata': 'Asistan su an kullanilamiyor'}})\n"
+            f"{g}    kod, govde = dennis_asistan.yanitla(body, {h.group(1)}, {d.group(1)})\n"
+            f"{g}    return response(kod, govde)\n\n")
+    kaynak = kaynak[:capa.start()] + blok + kaynak[capa.start():]
+    print("YAMA: asistan ucu (/de/asistan) eklendi.")
+    return kaynak, True
+
+
 def main():
     if len(sys.argv) == 3 and sys.argv[1] == "--olcum-tablosu":
         try:
@@ -373,7 +406,8 @@ def main():
     kaynak, b = yama_kayit(kaynak)
     atlananlar = []
     uygulandi = [a, b]
-    for ad, yama in (("otomatik onay", yama_otomatik_onay), ("olcum TTL", yama_olcum_ttl)):
+    for ad, yama in (("otomatik onay", yama_otomatik_onay), ("olcum TTL", yama_olcum_ttl),
+                     ("asistan ucu", yama_asistan)):
         try:
             kaynak, u = yama(kaynak)
             uygulandi.append(u)
