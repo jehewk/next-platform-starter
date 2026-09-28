@@ -1,12 +1,13 @@
-<#
+﻿<#
 .SYNOPSIS
   Üretici paneli için personel hesabı açar (Cognito).
 
 .DESCRIPTION
-  Şifre kalıcı atanır (--permanent). Atanmazsa Cognito ilk girişte şifre
-  değiştirme akışı başlatır; arayüz bunu desteklemez (DEVIR §2, §13.8).
-  Müşteri hesapları bu betikle AÇILMAZ: müşteri uygulamadan başvurur,
-  üretici panelindeki Başvurular sayfasından onaylanır.
+  Şifre kalıcı atanır (--permanent); atanmazsa Cognito ilk girişte şifre
+  değiştirme akışı başlatır ve arayüz bunu desteklemez (DEVIR §2, §13.8).
+  Hesap zaten varsa yalnızca rolünü ve şifresini günceller.
+  Müşteri hesapları bu betikle açılmaz: müşteri uygulamadan başvurur,
+  üretici panelinde Başvurular sayfasından onaylanır.
 
 .EXAMPLE
   .\kullanici-olustur.ps1 -Eposta teknisyen@dennisenerji.com -Rol uretici
@@ -15,29 +16,35 @@
 param(
   [Parameter(Mandatory)][string]$Eposta,
   [ValidateSet("uretici", "admin")][string]$Rol = "uretici",
+  [SecureString]$Sifre,
   [string]$Bolge = "eu-central-1",
   [string]$Profil = $env:AWS_PROFILE
 )
 $ErrorActionPreference = "Stop"
-$HAVUZ = "eu-central-1_6Y1AK5Z3q"
-$AWS_CLI = (Get-Command aws -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
-$ek = @("--region", $Bolge); if ($Profil) { $ek += @("--profile", $Profil) }
+. "$PSScriptRoot\ortak.ps1"
 
 $Eposta = $Eposta.Trim().ToLower()
-$sifre = Read-Host "Şifre (en az 8 karakter, büyük/küçük harf ve rakam)" -AsSecureString
-$duz = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sifre))
+if ($Eposta -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') { throw "Geçersiz e-posta: $Eposta" }
+if (-not $Sifre) { $Sifre = Read-Host "  $Eposta için şifre (en az 8 karakter; büyük/küçük harf ve rakam)" -AsSecureString }
+$bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Sifre)
+try { $duz = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
+finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
 if ($duz.Length -lt 8 -or $duz -cnotmatch '[a-z]' -or $duz -cnotmatch '[A-Z]' -or $duz -notmatch '\d') {
-  throw "Şifre kurala uymuyor."
+  throw "Şifre kurala uymuyor: en az 8 karakter, büyük harf, küçük harf ve rakam."
 }
 
-$gecici = "Gecici-" + [guid]::NewGuid().ToString("N").Substring(0, 10) + "A1"
-& $AWS_CLI cognito-idp admin-create-user --user-pool-id $HAVUZ --username $Eposta `
-  --user-attributes Name=email,Value=$Eposta Name=email_verified,Value=true Name=custom:rol,Value=$Rol `
-  --temporary-password $gecici --message-action SUPPRESS @ek | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "Hesap açılamadı (e-posta zaten kayıtlı olabilir)." }
-
-& $AWS_CLI cognito-idp admin-set-user-password --user-pool-id $HAVUZ --username $Eposta `
-  --password $duz --permanent @ek | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "Şifre atanamadı." }
+$var = Dene cognito-idp admin-get-user --user-pool-id $HAVUZ --username $Eposta
+if ($var) {
+  Cagir cognito-idp admin-update-user-attributes --user-pool-id $HAVUZ --username $Eposta `
+    --user-attributes "Name=custom:rol,Value=$Rol" | Out-Null
+  Tamam "$Eposta zaten vardı; rol '$Rol' olarak güncellendi"
+} else {
+  $gecici = "Gecici-" + [guid]::NewGuid().ToString("N").Substring(0, 10) + "Aa1"
+  Cagir cognito-idp admin-create-user --user-pool-id $HAVUZ --username $Eposta `
+    --user-attributes "Name=email,Value=$Eposta" "Name=email_verified,Value=true" "Name=custom:rol,Value=$Rol" `
+    --temporary-password $gecici --message-action SUPPRESS | Out-Null
+  Tamam "$Eposta ($Rol) açıldı"
+}
+Cagir cognito-idp admin-set-user-password --user-pool-id $HAVUZ --username $Eposta --password $duz --permanent | Out-Null
 $duz = $null
-Write-Host "✓ $Eposta ($Rol) açıldı. Üretici paneline bu e-posta ve şifreyle girilebilir." -ForegroundColor Green
+Tamam "şifre kalıcı olarak atandı"

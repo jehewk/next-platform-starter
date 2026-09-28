@@ -18,7 +18,7 @@ npm run lint     # oxlint
 
 Uygulamada demo veri yoktur; her ekran gerçek backend'den okur. Backend olmadan
 denemek için kök dizinde `node test/e2e.mjs` çalıştırın: API çağrıları
-`test/sahte-api.mjs` ile yanıtlanır (yalnızca test için, uygulamaya girmez).
+kök dizindeki `test/sahte-api.mjs` ile yanıtlanır (yalnızca test için, uygulamaya girmez).
 Mobil mağaza sürümü ve yayın adımları: kök dizindeki `YAYIN.md`.
 
 Windows'ta `npm` çalışmazsa `npm.cmd` kullanın veya:

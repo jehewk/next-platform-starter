@@ -41,3 +41,10 @@ yarn-error.log*
 
 # Uçtan uca test ekran görüntüleri
 test/ekranlar/
+
+# AWS kurulum çıktıları (yerel)
+aws/yedekler/
+aws/kurulum-durumu.json
+
+# Uygulama ortam dosyaları
+.env

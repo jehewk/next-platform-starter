@@ -3,7 +3,7 @@
 //   node test/e2e.mjs [ekran-goruntusu-klasoru]
 //
 // · Her iki uygulamanın geliştirme sunucusunu VITE_API_URL=https://api.test/prod ile başlatır.
-// · api.test'e giden her isteği panel-uretici/test/sahte-api.mjs yanıtlar
+// · api.test'e giden her isteği test/sahte-api.mjs yanıtlar
 //   (backend şeklinde, müşteri oturumunda veriyi müşteriye süzer).
 // · Giriş formları, kaptcha dahil, gerçekten doldurulur.
 // · Masaüstü ve 390 px'te sayfaları gezer; JS hatası ve yatay taşma arar.
@@ -17,7 +17,7 @@ const kok = join(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 let pw;
 try { pw = require("playwright"); } catch { pw = require(join(execSync("npm root -g").toString().trim(), "playwright")); }
-const { sahteIstek } = await import(join(kok, "panel-uretici/test/sahte-api.mjs"));
+const { sahteIstek } = await import(join(kok, "test/sahte-api.mjs"));
 const CIKTI = process.argv[2] || join(kok, "test/ekranlar");
 mkdirSync(CIKTI, { recursive: true });
 

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Dennis Energy — AWS backend ayarlarını (DEVIR.md §2) güvenle uygular.
 
@@ -29,26 +29,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$HESAP      = "346532553636"
-$LAMBDA     = "inverterai-api"
-$ROL        = "inverterai-api-role-f8jnfm8t"
-$HAVUZ      = "eu-central-1_6Y1AK5Z3q"
-$ISTEMCI    = "2ltj93e724e1tgg7v21ap95oqi"
-$TABLOLAR   = "dennis-cihazlar","dennis-aku-verileri","dennis-inverter-verileri","dennis-musteriler",
-              "dennis-eslesmeler","dennis-garanti","dennis-partiler"
+. "$PSScriptRoot\ortak.ps1"
+$TABLOLAR = "dennis-cihazlar","dennis-aku-verileri","dennis-inverter-verileri","dennis-musteriler",
+            "dennis-eslesmeler","dennis-garanti","dennis-partiler"
 
-# Yardımcının adı "aws" olamaz: PowerShell komut adlarında büyük/küçük harf
-# ayırmaz, fonksiyon kendini çağırırdı. Dış program tam yoluyla çağrılır.
-$AWS_CLI = (Get-Command aws -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
-function Cagir { param([Parameter(ValueFromRemainingArguments)]$A)
-  $ek = @("--region", $Bolge, "--output", "json")
-  if ($Profil) { $ek += @("--profile", $Profil) }
-  $cikti = & $AWS_CLI @A @ek 2>&1
-  if ($LASTEXITCODE -ne 0) { throw "aws $($A -join ' ') başarısız:`n$cikti" }
-  if ($cikti) { return ($cikti | Out-String | ConvertFrom-Json) }
-}
-function Adim($metin) { Write-Host "`n▶ $metin" -ForegroundColor Cyan }
-function Tamam($metin) { Write-Host "  ✓ $metin" -ForegroundColor Green }
 function Yapilacak($metin) {
   if ($Uygula) { Write-Host "  → $metin" -ForegroundColor Yellow }
   else { Write-Host "  (kuru) $metin" -ForegroundColor DarkYellow }
@@ -56,12 +40,11 @@ function Yapilacak($metin) {
 
 # ── 0) Kimlik ve hesap kontrolü ─────────────────────────────────────────
 Adim "Hesap doğrulanıyor"
-$kim = Cagir sts get-caller-identity
-if ($kim.Account -ne $HESAP) { throw "Yanlış hesap: $($kim.Account) (beklenen $HESAP). Profil: '$Profil'" }
+$kim = HesapDogrula
 Tamam "$($kim.Arn)"
 
 # ── 1) DynamoDB izinleri ────────────────────────────────────────────────
-Adim "1/4 DynamoDB tablo izinleri ($ROL)"
+Adim "1/4 DynamoDB tablo izinleri ($LAMBDA_ROLU)"
 $kaynaklar = foreach ($t in $TABLOLAR) {
   "arn:aws:dynamodb:${Bolge}:${HESAP}:table/$t"
   "arn:aws:dynamodb:${Bolge}:${HESAP}:table/$t/index/*"
@@ -75,14 +58,13 @@ $dynamoPolitika = @{
     Resource = $kaynaklar
   })
 } | ConvertTo-Json -Depth 6 -Compress
-$var = $null
-try { $var = Cagir iamget-role-policy --role-name $ROL --policy-name DennisTablolari } catch { }
+$var = Dene iam get-role-policy --role-name $LAMBDA_ROLU --policy-name DennisTablolari
 if ($var) { Tamam "DennisTablolari mevcut" }
 else {
   Yapilacak "DennisTablolari politikası eklenecek"
   if ($Uygula) {
-    $dosya = New-TemporaryFile; [IO.File]::WriteAllText($dosya, $dynamoPolitika)
-    Cagir iamput-role-policy --role-name $ROL --policy-name DennisTablolari --policy-document "file://$dosya" | Out-Null
+    $dosya = JsonDosyasi $dynamoPolitika
+    Cagir iam put-role-policy --role-name $LAMBDA_ROLU --policy-name DennisTablolari --policy-document "file://$dosya" | Out-Null
     Remove-Item $dosya; Tamam "eklendi"
   }
 }
@@ -98,14 +80,13 @@ $cognitoPolitika = @{
     Resource = "arn:aws:cognito-idp:${Bolge}:${HESAP}:userpool/$HAVUZ"
   })
 } | ConvertTo-Json -Depth 6 -Compress
-$var = $null
-try { $var = Cagir iamget-role-policy --role-name $ROL --policy-name KayitIzinleri } catch { }
+$var = Dene iam get-role-policy --role-name $LAMBDA_ROLU --policy-name KayitIzinleri
 if ($var) { Tamam "KayitIzinleri mevcut" }
 else {
   Yapilacak "KayitIzinleri politikası eklenecek"
   if ($Uygula) {
-    $dosya = New-TemporaryFile; [IO.File]::WriteAllText($dosya, $cognitoPolitika)
-    Cagir iamput-role-policy --role-name $ROL --policy-name KayitIzinleri --policy-document "file://$dosya" | Out-Null
+    $dosya = JsonDosyasi $cognitoPolitika
+    Cagir iam put-role-policy --role-name $LAMBDA_ROLU --policy-name KayitIzinleri --policy-document "file://$dosya" | Out-Null
     Remove-Item $dosya; Tamam "eklendi"
   }
 }
@@ -153,7 +134,7 @@ else {
 
 # ── 4) KAPTCHA_GIZLI (diğer ortam değişkenleri korunur) ─────────────────
 Adim "4/4 Lambda ortam değişkeni KAPTCHA_GIZLI"
-$yap = Cagir lambdaget-function-configuration --function-name $LAMBDA
+$yap = Cagir lambda get-function-configuration --function-name $LAMBDA
 $degiskenler = @{}
 if ($yap.Environment -and $yap.Environment.Variables) {
   $yap.Environment.Variables.PSObject.Properties | ForEach-Object { $degiskenler[$_.Name] = $_.Value }
@@ -166,11 +147,10 @@ if ($degiskenler.ContainsKey("KAPTCHA_GIZLI") -and $degiskenler["KAPTCHA_GIZLI"]
     $bayt = New-Object byte[] 36
     [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bayt)
     $degiskenler["KAPTCHA_GIZLI"] = [Convert]::ToBase64String($bayt)
-    $dosya = New-TemporaryFile
-    [IO.File]::WriteAllText($dosya, (@{ Variables = $degiskenler } | ConvertTo-Json -Compress))
-    Cagir lambdaupdate-function-configuration --function-name $LAMBDA --environment "file://$dosya" | Out-Null
+    $dosya = JsonDosyasi @{ Variables = $degiskenler }
+    Cagir lambda update-function-configuration --function-name $LAMBDA --environment "file://$dosya" | Out-Null
     Remove-Item $dosya
-    Cagir lambdawait function-updated --function-name $LAMBDA | Out-Null
+    Cagir lambda wait function-updated --function-name $LAMBDA | Out-Null
     Tamam "atandı (açık kaptcha token'ları geçersiz olur; kullanıcılar yeni kod alır)"
   }
 }

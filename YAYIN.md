@@ -23,7 +23,7 @@ cd panel-musteri && cp .env.example .env && npm install && npm run dev   # :5174
 ```
 
 `.env` olmadan derleme yapılırsa uygulama sessizce boş gelir (DEVIR §13.1);
-`aws/panel-yayinla.ps1` bunu engeller.
+`aws/panel-yayinla.ps1` `.env`'yi `.env.example`'dan kendisi oluşturur.
 
 ## Doğrulama
 
@@ -32,32 +32,50 @@ node test/e2e.mjs        # iki uygulama, sahte API, masaüstü + 390 px
 node marka/ikon-uret.mjs # logo değişirse tüm ikonları yeniden üretir
 ```
 
-`test/e2e.mjs` API Gateway çağrılarını `panel-uretici/test/sahte-api.mjs` ile
+`test/e2e.mjs` API Gateway çağrılarını `test/sahte-api.mjs` ile
 yanıtlar (uygulamaya dahil değildir). Giriş formu kaptcha dahil doldurulur;
 müşteri oturumunda yalnızca kendi 6 cihazının göründüğü, yeni müşteri, garanti
 kararı, destek talebi ve kayıt başvurusunun çalıştığı, JS hatası / taşma /
 "NaN" olmadığı denetlenir.
 
-## Web yayını (AWS)
+## AWS kurulumu — tek komut
 
-1. S3 kovası + CloudFront dağıtımı oluştur (her uygulama için ayrı). CloudFront'ta
-   403 ve 404 hata yanıtlarını `/index.html` (200) olarak ayarla.
-2. `.\aws\panel-yayinla.ps1 -Panel panel-musteri -Kova <kova> -DagitimId <id>`
-
-## Backend ayarları (PowerShell)
+Gerekenler: AWS CLI v2 (`aws sts get-caller-identity` hesap 346532553636'yı
+göstermeli), Node.js LTS, Python 3.
 
 ```powershell
-cd aws
-.\backend-ayarlari.ps1            # kuru çalışma: neyin eksik olduğunu yazar
-.\backend-ayarlari.ps1 -Uygula    # DEVIR §2'deki 4 ayarı uygular
-.\kullanici-olustur.ps1 -Eposta teknisyen@dennisenerji.com -Rol uretici
+git clone -b claude/gifted-planck-7dptio https://github.com/jehewk/next-platform-starter.git C:\dennis
+cd C:\dennis\aws
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\hepsini-kur.ps1
 ```
 
-**Müşteri düzenleme** için backend'e bir uç eklenmeli:
-`aws/ekler/musteri_guncelle.py` içindeki bloğu `lambda_function.py`'ye ekleyip
-`.\lambda-yukle.ps1 -Dosya <yol>\lambda_function.py` ile yükleyin (canlı kod önce
-yedeklenir, numpy kontrolü yapılır). Eklenene kadar üretici panelinde "Düzenle"
-kaydederken sunucu hatası gösterir; diğer her şey mevcut uçlarla çalışır.
+Betik önce ne yapacağını listeler ve onay ister, sonra:
+
+1. **Backend ayarları** (DEVIR §2): tablo ve Cognito izinleri, şifreyle giriş
+   akışı, kaptcha anahtarı. Mevcut Lambda ortam değişkenleri korunur.
+2. **Müşteri düzenleme ucu**: canlı Lambda kodu indirilir, `/de/musteri/guncelle`
+   otomatik eklenir (`ekler/yamala.py`; kod beklenen yapıda değilse hiçbir şeye
+   dokunmaz). Canlı kod `aws\yedekler\` altına yedeklenir, zip'teki diğer
+   dosyalar korunur. Yüklemeden sonra `/de/kaptcha` ile sağlık kontrolü yapılır;
+   geçmezse önceki kod **otomatik** geri yüklenir.
+3. **Üretici hesabı**: sorulan e-posta ve şifreyle (kalıcı şifre).
+4. **Web yayını**: her uygulama için tamamen özel bir S3 kovası +
+   CloudFront (HTTPS, yalnızca CloudFront okuyabilir, tek sayfa yönlendirme);
+   derlenip yüklenir, adresler tarayıcıda açılır. İlk kurulumda CloudFront'un
+   yayılması 5–15 dakika sürer.
+
+Tekrar çalıştırmak güvenlidir: var olan hiçbir şey yeniden oluşturulmaz.
+Güncelleme yayınlamak için aynı komut ya da yalnızca web adımı:
+`.\hepsini-kur.ps1 -Atla backend,lambda,hesap`.
+
+Tekil betikler: `backend-ayarlari.ps1` (kuru çalışma için `-Uygula`'sız),
+`lambda-yukle.ps1` (`-GeriYukle <zip>` ile geri dönüş), `kullanici-olustur.ps1`,
+`panel-yayinla.ps1`.
+
+Betikler Windows PowerShell 5.1 ve PowerShell 7 ile uyumludur; PowerShell 7'de
+sahte bir AWS CLI ile uçtan uca test edildi (ilk kurulum, ikinci çalıştırmada
+hiçbir şeyin yeniden oluşturulmaması, bozuk kodda otomatik geri alma).
 
 ## Mağaza yayını (Capacitor)
 
@@ -92,7 +110,6 @@ Mağaza incelemesinden önce:
 
 | | İş |
 |---|---|
-| 🔴 | `musteri_guncelle` ekini backend'e yüklemek |
 | 🔴 | Hesap silme sayfası ve gizlilik politikası (mağaza için zorunlu) |
 | 🟡 | Sohbet için dil modeli ucu (`VITE_ASISTAN_YOLU`); şu an kural tabanlı |
 | 🟡 | Anlık bildirim (push): "cihaz sustu", "kritik durum" — backend + Firebase/APNs |

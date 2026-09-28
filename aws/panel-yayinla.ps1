@@ -1,20 +1,19 @@
-<#
+﻿<#
 .SYNOPSIS
-  Bir paneli derleyip S3 + CloudFront'a yayınlar.
+  Bir uygulamayı derleyip S3 + CloudFront'a yükler.
 
 .DESCRIPTION
-  1) .env var mı kontrol eder (yoksa panel sessizce boş gelir — DEVIR §13.1)
+  1) .env yoksa .env.example'dan oluşturur; VITE_API_URL tanımlı olmalı
+     (yoksa uygulama sessizce boş gelir — DEVIR §13.1)
   2) npm ci + npm run build
-  3) dist/ → S3: içerik özetli /assets/ dosyaları 1 yıl önbellek,
-     index.html / sw.js / manifest önbelleksiz (yeni sürüm hemen görünür)
+  3) /assets/ (adında içerik özeti olan dosyalar) 1 yıl önbellek;
+     index.html, sw.js, manifest önbelleksiz — yeni sürüm hemen görünür
   4) CloudFront önbelleğini temizler
 
-  Kova ve CloudFront dağıtımı önceden oluşturulmuş olmalı. CloudFront'ta
-  403/404 hata yanıtları /index.html'e (200) yönlendirilmeli — tek sayfa
-  uygulama yolları (/cihaz/AKU-...) doğrudan açılabilsin.
+  Kova ve dağıtımı oluşturmak için hepsini-kur.ps1 kullanın.
 
 .EXAMPLE
-  .\panel-yayinla.ps1 -Panel panel-musteri -Kova dennis-musteri-web -DagitimId E1ABCDEF2GHIJ
+  .\panel-yayinla.ps1 -Panel panel-musteri -Kova dennis-musteri-346532553636 -DagitimId E1ABCDEF2GHIJ
 #>
 [CmdletBinding()]
 param(
@@ -25,30 +24,40 @@ param(
   [string]$Profil = $env:AWS_PROFILE
 )
 $ErrorActionPreference = "Stop"
-$AWS_CLI = (Get-Command aws -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
-$ek = @("--region", $Bolge); if ($Profil) { $ek += @("--profile", $Profil) }
-function Calistir { param([Parameter(ValueFromRemainingArguments)]$A)
-  & $AWS_CLI @A @ek; if ($LASTEXITCODE -ne 0) { throw "aws $($A -join ' ') başarısız" }
-}
+. "$PSScriptRoot\ortak.ps1"
 
 $kok = Join-Path (Split-Path $PSScriptRoot -Parent) $Panel
-if (-not (Test-Path "$kok\.env")) { throw "$kok\.env yok. .env.example'ı kopyalayıp doldurun; aksi halde panel boş gelir." }
-if (-not (Select-String -Path "$kok\.env" -Pattern '^VITE_API_URL=https://' -Quiet)) { throw ".env içinde VITE_API_URL tanımlı değil." }
+$envDosya = Join-Path $kok ".env"
+if (-not (Test-Path $envDosya)) {
+  Copy-Item (Join-Path $kok ".env.example") $envDosya
+  Bilgi ".env, .env.example'dan oluşturuldu"
+}
+if (-not (Select-String -Path $envDosya -Pattern '^VITE_API_URL=https://' -Quiet)) {
+  throw "$envDosya içinde VITE_API_URL tanımlı değil."
+}
 
+Adim "$Panel derleniyor"
 Push-Location $kok
 try {
-  npm ci; if ($LASTEXITCODE -ne 0) { throw "npm ci başarısız" }
-  npm run build; if ($LASTEXITCODE -ne 0) { throw "derleme başarısız" }
+  & npm ci --no-audit --no-fund --loglevel=error
+  if ($LASTEXITCODE -ne 0) { throw "npm ci başarısız" }
+  & npm run build
+  if ($LASTEXITCODE -ne 0) { throw "derleme başarısız" }
 } finally { Pop-Location }
+$dist = Join-Path $kok "dist"
+if (-not (Test-Path (Join-Path $dist "index.html"))) { throw "dist\index.html oluşmadı" }
+Tamam "derlendi"
 
-$dist = "$kok\dist"
-Write-Host "▶ S3: s3://$Kova"
-Calistir s3 sync "$dist\assets" "s3://$Kova/assets" --delete --cache-control "public,max-age=31536000,immutable"
-Calistir s3 sync $dist "s3://$Kova" --delete --exclude "assets/*" --cache-control "no-cache"
-Calistir s3 cp "$dist\manifest.webmanifest" "s3://$Kova/manifest.webmanifest" --content-type "application/manifest+json" --cache-control "no-cache"
+Adim "S3'e yükleniyor: s3://$Kova"
+Cagir s3 sync (Join-Path $dist "assets") "s3://$Kova/assets" --delete --only-show-errors `
+  --cache-control "public,max-age=31536000,immutable" | Out-Null
+Cagir s3 sync $dist "s3://$Kova" --delete --only-show-errors --exclude "assets/*" --cache-control "no-cache" | Out-Null
+Cagir s3 cp (Join-Path $dist "manifest.webmanifest") "s3://$Kova/manifest.webmanifest" --only-show-errors `
+  --content-type "application/manifest+json" --cache-control "no-cache" | Out-Null
+Tamam "yüklendi"
 
 if ($DagitimId) {
-  Write-Host "▶ CloudFront önbelleği temizleniyor"
-  Calistir cloudfront create-invalidation --distribution-id $DagitimId --paths "/index.html" "/sw.js" "/manifest.webmanifest" "/"
+  Adim "CloudFront önbelleği temizleniyor"
+  Cagir cloudfront create-invalidation --distribution-id $DagitimId --paths "/*" | Out-Null
+  Tamam "temizleme başlatıldı"
 }
-Write-Host "✓ $Panel yayınlandı." -ForegroundColor Green

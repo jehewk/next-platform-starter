@@ -41,7 +41,7 @@ hata diğerinde de düzeltilmeli. Mimari ve yayın: kök `YAYIN.md`.
 - Sayfalar yalnızca `src/api/servis.js` fonksiyonlarını çağırır (`useVeri` / `useCanli`).
 - Yalnızca DEVIR.md §3'te listelenen uçları kullan. Listede olmayan bir uç gerekiyorsa
   backend eki yaz (`aws/ekler/`) ve bunu açıkça belirt; uydurma uç çağırma.
-- Uygulamada demo/örnek veri YOK. Test için `panel-uretici/test/sahte-api.mjs`
+- Uygulamada demo/örnek veri YOK. Test için `test/sahte-api.mjs` (uygulama klasörlerinin dışında)
   backend şeklinde yanıt verir; yeni uç eklersen oraya da ekle.
 - Backend zamanı UTC ama `Z` eki yok: her zaman `utcTarih()` ile oku.
 

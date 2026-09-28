@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ChevronLeft, BatteryCharging, Cpu, MapPin, Phone, Mail, Calendar, ExternalLink, Pencil } from "lucide-react";
+import { ChevronLeft, BatteryCharging, Cpu, MapPin, Phone, Mail, Calendar, Pencil } from "lucide-react";
 import { Kart, Olcum, OlcumSeridi, SayfaBasligi, Bos } from "../bilesenler/Kart";
 import MusteriDuzenle from "../bilesenler/MusteriDuzenle";
 import { Rozet, SaglikCubugu } from "../bilesenler/Rozet";
@@ -9,7 +9,6 @@ import { useVeri } from "../api/useVeri";
 import { musteriBul, cihazListesi } from "../api/servis";
 import { saglikDurumu, garantiDurumu, tarihTR, DURUM_YAZI } from "../veri/yardimci";
 
-const MUSTERI_APP = import.meta.env.VITE_MUSTERI_APP_URL;
 
 export default function MusteriDetay() {
   const { id } = useParams();
@@ -44,11 +43,6 @@ export default function MusteriDetay() {
         baslik={<span className="flex items-center gap-3">{m.ad}
           <Rozet durum={!sorunlu ? "saglikli" : d === "saglikli" ? "uyari" : d} cocuk={sorunlu ? `${sorunlu} sorun` : "Normal"} /></span>}
         eylem={<>
-          {MUSTERI_APP && (
-            <a href={`${MUSTERI_APP}/${m.id}`} target="_blank" rel="noreferrer" className="dugme-ikincil">
-              <ExternalLink size={14} /> Müşteri görünümü
-            </a>
-          )}
           <button onClick={() => setDuzenle(true)} className="dugme-ana"><Pencil size={14} /> Düzenle</button>
         </>}
       />
