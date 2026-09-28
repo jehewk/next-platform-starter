@@ -1,25 +1,31 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import Modal from "./Modal";
-import { musteriGuncelle } from "../api/servis";
+import { musteriGuncelle, musteriOlustur } from "../api/servis";
+import { useToast } from "./Toast";
 
 const TIPLER = ["Konut", "Ticari", "Sanayi", "Tarım", "Kamu"];
 
-/** Müşteri iletişim ve konum bilgilerini düzenleme diyaloğu. */
+/**
+ * Müşteri oluşturma (musteri verilmezse) ve düzenleme diyaloğu.
+ * Oluşturma: POST /de/musteri/olustur · Düzenleme: POST /de/musteri/guncelle
+ */
 export default function MusteriDuzenle({ acik, kapat, musteri, kaydedildi }) {
+  const bildir = useToast();
+  const yeni = !musteri;
   const [form, setForm] = useState(null);
   const [hata, setHata] = useState(null);
   const [kaydediliyor, setKaydediliyor] = useState(false);
 
   useEffect(() => {
-    if (acik && musteri) {
-      setForm({
-        ad: musteri.ad || "", tip: musteri.tip || "Konut", telefon: musteri.telefon || "",
-        email: musteri.email || "", il: musteri.il || "", ilce: musteri.ilce || "",
-        adres: musteri.adres || "", lat: musteri.lat ?? "", lng: musteri.lng ?? "",
-      });
-      setHata(null);
-    }
+    if (!acik) return;
+    const m = musteri || {};
+    setForm({
+      ad: m.ad || "", tip: m.tip || "Konut", telefon: m.telefon || "",
+      email: m.email || "", il: m.il || "", ilce: m.ilce || "",
+      adres: m.adres || "", lat: m.lat ?? "", lng: m.lng ?? "",
+    });
+    setHata(null);
   }, [acik, musteri]);
 
   if (!form) return null;
@@ -36,7 +42,10 @@ export default function MusteriDuzenle({ acik, kapat, musteri, kaydedildi }) {
     setKaydediliyor(true);
     setHata(null);
     try {
-      await musteriGuncelle(musteri.id, { ...form, ad: form.ad.trim(), lat, lng });
+      const veri = { ...form, ad: form.ad.trim(), email: form.email.trim().toLowerCase(), lat, lng };
+      if (yeni) await musteriOlustur(veri);
+      else await musteriGuncelle(musteri.id, veri);
+      bildir(yeni ? `${veri.ad} eklendi` : "Müşteri bilgileri kaydedildi");
       kaydedildi?.();
       kapat();
     } catch (err) {
@@ -47,7 +56,7 @@ export default function MusteriDuzenle({ acik, kapat, musteri, kaydedildi }) {
   }
 
   return (
-    <Modal acik={acik} kapat={kapat} baslik="Müşteriyi düzenle" aciklama={musteri?.id} genislik="max-w-xl"
+    <Modal acik={acik} kapat={kapat} baslik={yeni ? "Yeni müşteri" : "Müşteriyi düzenle"} aciklama={yeni ? "Kurulum yapılacak adres ve iletişim bilgileri" : musteri.id} genislik="max-w-xl"
       alt={<>
         <button type="button" onClick={kapat} className="dugme-ikincil">Vazgeç</button>
         <button type="submit" form="musteri-form" disabled={kaydediliyor || !form.ad.trim()} className="dugme-ana">
@@ -57,7 +66,7 @@ export default function MusteriDuzenle({ acik, kapat, musteri, kaydedildi }) {
       <form id="musteri-form" onSubmit={kaydet} className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label className="etiket">Ad / unvan</label>
-          <input required {...alan("ad")} className="girdi" />
+          <input required autoFocus {...alan("ad")} className="girdi" />
         </div>
         <div>
           <label className="etiket">Tip</label>

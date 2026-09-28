@@ -1,12 +1,15 @@
 ---
 name: uretici-paneli
-description: Dennis Enerji üretici paneli (panel-uretici/) üzerinde çalışırken kullan — yeni sayfa, bileşen, grafik ekleme, tasarım düzenleme veya paneli çalıştırıp ekran görüntüsüyle doğrulama. Tema belirteçlerini, ortak bileşenleri ve demo modunu açıklar.
+description: Dennis Energy uygulamaları (panel-uretici/ ve panel-musteri/) üzerinde çalışırken kullan — yeni sayfa, bileşen, grafik ekleme, tasarım düzenleme, backend veri sözleşmesi veya uygulamaları çalıştırıp uçtan uca doğrulama. Tema belirteçlerini, ortak bileşenleri ve test düzeneğini açıklar.
 ---
 
-# Üretici paneli — çalışma kuralları
+# Dennis Energy uygulamaları — çalışma kuralları
 
-Panel `panel-uretici/` altında, React + Vite + Tailwind 3. Kök dizindeki Next.js
-projesinden bağımsızdır; komutları `panel-uretici/` içinde çalıştır.
+İki ayrı proje: `panel-uretici/` (teknisyen) ve `panel-musteri/` (ev sahibi).
+React + Vite + Tailwind 3; kök dizindeki Next.js projesinden bağımsızdır.
+Ortak dosyalar (istemci.js, oturum.js, servis.js, yardimci.js, Modal, Toast,
+Kart, Rozet, Intro, Logo) iki projede kopya olarak durur — birinde düzeltilen
+hata diğerinde de düzeltilmeli. Mimari ve yayın: kök `YAYIN.md`.
 
 ## Tasarım sistemi
 
@@ -23,26 +26,34 @@ projesinden bağımsızdır; komutları `panel-uretici/` içinde çalıştır.
   `Rozet`, `SaglikCubugu`; `Modal`; `Iskelet`, `SatirIskelet`, `HataKutusu`.
 - Her sayfa: `SayfaBasligi` → filtre satırı (cip + arama) → `Kart` içinde içerik.
   Yükleniyor / hata / boş durumlarının üçü de ele alınır.
-- Gradyan, parlama, emoji, animasyonlu giriş ekranı, "AI" süsü ekleme. Sade, yoğun,
-  okunur (Linear / Vercel tarzı) kal.
+- Gradyan, parlama, emoji, "AI" süsü ekleme. Sade, yoğun, okunur (Linear / Vercel
+  tarzı) kal. Tek istisna: marka açılışı (Intro.tsx, siyah zemin + beyaz DE logosu,
+  oturum başına bir kez) — ürün sahibinin isteğidir, kaldırma.
+- Logo tek kaynaktan: `marka/logo.svg`; ikon/kapak için `node marka/ikon-uret.mjs`.
+- Müşteri uygulamasında teknik ayrıntı gösterme; `veri/sadeDil.js` üzerinden anlat.
+  Dokunma hedefleri en az 44 px; alt sekme çubuğu ve güvenli alan boşlukları korunur.
 - Grafikler: tek eksen, ince işaretler, tek seride lejant yok, eşik çizgisi etiketli,
   `isAnimationActive={false}`, ipucu için `Ipucu` bileşeni.
 - Metinler Türkçe; kod adları mevcut Türkçe adlandırmayı izler.
 
 ## Veri
 
-- Sayfalar yalnızca `src/api/servis.js` fonksiyonlarını çağırır, `useVeri` ile.
-- Yeni bir uç eklersen `src/api/demo.js` içine aynı şekilde demo yanıtı da ekle.
+- Sayfalar yalnızca `src/api/servis.js` fonksiyonlarını çağırır (`useVeri` / `useCanli`).
+- Yalnızca DEVIR.md §3'te listelenen uçları kullan. Listede olmayan bir uç gerekiyorsa
+  backend eki yaz (`aws/ekler/`) ve bunu açıkça belirt; uydurma uç çağırma.
+- Uygulamada demo/örnek veri YOK. Test için `panel-uretici/test/sahte-api.mjs`
+  backend şeklinde yanıt verir; yeni uç eklersen oraya da ekle.
+- Backend zamanı UTC ama `Z` eki yok: her zaman `utcTarih()` ile oku.
 
 ## Doğrulama
 
 ```bash
-cd panel-uretici
-npm install
-npx vite build && npx oxlint
-npx vite --port 5173   # arka planda
+(cd panel-uretici && npx vite build && npx oxlint)
+(cd panel-musteri && npx vite build && npx oxlint)
+node test/e2e.mjs <ekran-klasoru>   # iki uygulama, sahte API, masaüstü + 390 px
 ```
 
-Tarayıcıda `/giris` → "Demo verisiyle incele" ile gir ve değişen sayfanın ekran
-görüntüsünü al (Playwright, Chromium `/opt/pw-browsers` altında). Hem koyu hem açık
-temada ve 390px genişlikte yatay kaydırma olmadığını kontrol et.
+`e2e.mjs` giriş formunu kaptcha dahil doldurur, işlemleri (yeni müşteri, garanti
+kararı, destek talebi, kayıt) gerçekten yapar ve JS hatası, yatay taşma, ekranda
+"NaN/undefined" arar. Değişen ekranın görüntüsüne mutlaka bak — "derlendi" ≠
+"çalışıyor" (DEVIR §8).

@@ -114,7 +114,7 @@ function KullaniciMenusu() {
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{ad}</span>
           <span className="block truncate text-2xs text-sonuk">
-            {oturum?.demo ? "Demo oturumu" : eposta}
+            {eposta}
           </span>
         </span>
         <ChevronsUpDown size={14} className="text-sonuk" />

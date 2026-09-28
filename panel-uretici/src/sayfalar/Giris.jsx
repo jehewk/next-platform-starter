@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
-import { girisYap, demoGiris } from "../api/oturum";
-import { demoAcik } from "../api/demo";
+import { girisYap } from "../api/oturum";
 import Logo from "../bilesenler/Logo";
 import Kaptcha from "../bilesenler/Kaptcha";
 
@@ -34,17 +33,13 @@ export default function Giris() {
     }
   }
 
-  function demoIleGir() {
-    demoGiris();
-    git(donus, { replace: true });
-  }
 
   return (
     <div className="flex min-h-screen flex-col bg-zemin">
       <main className="flex flex-1 items-center justify-center px-5 py-12">
         <div className="w-full max-w-[380px]">
           <div className="mb-8 flex flex-col items-center text-center">
-            <Logo boyut={40} zeminRenk="rgb(var(--metin))" renk="rgb(var(--zemin))" />
+            <Logo boyut={56} zeminli={false} renk="rgb(var(--metin))" />
             <h1 className="mt-5 text-xl font-semibold tracking-tight">Üretici paneline giriş</h1>
             <p className="mt-1.5 text-sm text-soluk">Dennis Enerji hesabınızla devam edin.</p>
           </div>
@@ -81,16 +76,6 @@ export default function Giris() {
               {gonderiliyor ? "Giriş yapılıyor…" : "Giriş yap"}
             </button>
 
-            {demoAcik && (
-              <>
-                <div className="flex items-center gap-3 text-2xs uppercase tracking-wider text-sonuk">
-                  <span className="h-px flex-1 bg-cizgi" />veya<span className="h-px flex-1 bg-cizgi" />
-                </div>
-                <button type="button" onClick={demoIleGir} className="dugme-ikincil w-full">
-                  Demo verisiyle incele
-                </button>
-              </>
-            )}
           </form>
 
           <p className="mt-6 text-center text-xs text-sonuk">

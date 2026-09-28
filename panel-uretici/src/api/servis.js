@@ -104,7 +104,8 @@ export function akuDetayUyarla(cihaz) {
     sicakliklar: (o.sicakliklar || []).map((s, i) => ({ no: i + 1, deger: s })),
     sarjMos: o.sarj_mos ?? null,
     desarjMos: o.desarj_mos ?? null,
-    dengeleme: o.dengeleme_hucreleri || [],
+    // Backend dengeleme bilgisini saklamıyor; alan yoksa null → arayüz "—" gösterir.
+    dengeleme: o.dengeleme_hucreleri ?? null,
     hatalar: (o.hata_kodlari || []).map((h) => ({
       kod: h.kod || h, mesaj: h.mesaj || "", seviye: h.seviye || "uyari",
     })),
@@ -113,8 +114,8 @@ export function akuDetayUyarla(cihaz) {
     kalanKapasiteAh: o.soc != null && cihaz.kapasiteAh
       ? Number(((o.soc / 100) * cihaz.kapasiteAh).toFixed(1)) : null,
     toplamKapasiteAh: cihaz.kapasiteAh ?? null,
-    // Paket gerilimi hücrelerin toplamıdır; sıcaklık bağlı sensörlerin en yükseği.
-    paketGerilim: o.paket_gerilim ?? (gerilimler.length
+    // Backend paket gerilimini `gerilim` alanında saklar (DEVIR §4); yoksa hücre toplamı.
+    paketGerilim: o.gerilim != null ? Number(o.gerilim) : (gerilimler.length
       ? Number(gerilimler.reduce((a, b) => a + b, 0).toFixed(2)) : null),
     sicaklik: (() => {
       const bagli = (o.sicakliklar || []).filter((t) => t != null && t > -40);
@@ -165,9 +166,15 @@ function musteriUyarla(m) {
   };
 }
 
+/**
+ * Onaylı müşteriler. Onay bekleyen / reddedilen kayıt başvuruları
+ * Başvurular sayfasında (/de/kayit/liste) ayrıca listelenir.
+ */
 export async function musteriListesi() {
   const { musteriler } = await api.get("/de/musteri/liste");
-  return musteriler.map(musteriUyarla);
+  return musteriler
+    .filter((m) => !["onay_bekliyor", "reddedildi"].includes(m.kayit_durumu))
+    .map(musteriUyarla);
 }
 
 export async function musteriBul(musteriId) {
@@ -175,7 +182,10 @@ export async function musteriBul(musteriId) {
   return hepsi.find((m) => m.id === musteriId) || null;
 }
 
-/** Müşteri kaydını düzenler. Yalnızca gönderilen alanlar değişir. */
+/**
+ * Müşteri kaydını düzenler. Yalnızca gönderilen alanlar değişir.
+ * Backend eki gerektirir: backend/ekler/musteri_guncelle.py
+ */
 export async function musteriGuncelle(musteriId, alanlar) {
   return api.post("/de/musteri/guncelle", { musteri_id: musteriId, ...alanlar });
 }
@@ -248,22 +258,6 @@ export async function partiListesi() {
     sevk: p.sevk || 0, kurulu: p.kurulu || 0, depoda: p.depoda || 0, arizali: p.arizali || 0,
     tarih: p.son_uretim || null,
   }));
-}
-
-/**
- * Üretim hattında yeni cihaz kaydı.
- * veri: {tip, model, parti, adet, kapasite_ah?, guc_kw?} → {cihazlar: [cihaz_id…]}
- */
-export async function cihazUret(veri) {
-  return api.post("/de/cihaz/uret", veri);
-}
-
-/**
- * Cihazın lojistik durumunu / müşterisini değiştirir.
- * alanlar: {durum?: "depoda"|"sevkte"|"aktif", musteri_id?: string|null}
- */
-export async function cihazGuncelle(cihazId, alanlar) {
-  return api.post("/de/cihaz/guncelle", { cihaz_id: cihazId, ...alanlar });
 }
 
 // ══════════════════ İNVERTER DETAYI ══════════════════

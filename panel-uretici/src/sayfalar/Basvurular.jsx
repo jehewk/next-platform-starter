@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useToast } from "../bilesenler/Toast";
 import { Kart, SayfaBasligi, Bos } from "../bilesenler/Kart";
 import { SatirIskelet, HataKutusu } from "../bilesenler/VeriDurumu";
 import { useVeri } from "../api/useVeri";
@@ -18,18 +19,17 @@ const URUN_ADI = { aku: "Akü", inverter: "İnverter", ikisi: "Akü + İnverter"
 export default function Basvurular() {
   const { veri: liste, yukleniyor, hata, yenile } = useVeri(basvuruListesi);
   const [islemde, setIslemde] = useState(null);
-  const [sonuc, setSonuc] = useState(null);
+  const bildir = useToast();
 
   async function karar(id, ad, secim) {
     if (secim === "ret" && !confirm(`${ad} başvurusu reddedilecek ve kaydı silinecek. Emin misiniz?`)) return;
     setIslemde(id);
-    setSonuc(null);
     try {
       await basvuruKarar(id, secim);
-      setSonuc({ tur: "iyi", metin: secim === "onay" ? `${ad} onaylandı.` : `${ad} başvurusu reddedildi.` });
+      bildir(secim === "onay" ? `${ad} onaylandı; artık giriş yapabilir.` : `${ad} başvurusu reddedildi.`);
       yenile();
     } catch (e) {
-      setSonuc({ tur: "kotu", metin: e.message });
+      bildir(e.message, "kotu");
     } finally {
       setIslemde(null);
     }
@@ -40,10 +40,6 @@ export default function Basvurular() {
       <SayfaBasligi baslik="Kayıt başvuruları"
         aciklama="Müşteri uygulamasından gelen yeni kayıtlar. Onaylanana kadar giriş yapamazlar." />
 
-      {sonuc && (
-        <p role="status" className={`rounded-md border px-3 py-2 text-sm ${sonuc.tur === "iyi"
-          ? "border-saglikli/30 bg-saglikli/10 text-saglikli" : "border-kritik/30 bg-kritik/10 text-kritik"}`}>{sonuc.metin}</p>
-      )}
 
       {yukleniyor ? (
         <SatirIskelet satir={3} />

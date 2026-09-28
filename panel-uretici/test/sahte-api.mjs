@@ -1,17 +1,12 @@
 /**
- * Demo veri kaynağı.
+ * TEST DÜZENEĞİ — uygulamaya dahil DEĞİLDİR.
  *
- * Backend'e erişim olmadan paneli incelemek için kullanılır; yalnızca
- * geliştirme sunucusunda (npm run dev) veya VITE_DEMO=1 ile derlenen
- * sürümde giriş ekranında görünür. Yanıtlar backend ile AYNI şekildedir
- * (snake_case) — servis.js hangi kaynaktan geldiğini bilmez.
+ * Playwright testleri API Gateway çağrılarını yakalayıp buradan yanıtlar
+ * (DEVIR.md §9'daki yöntem). Yanıtlar backend ile aynı şekildedir
+ * (snake_case). Müşteri oturumunda backend gibi veriyi müşteriye süzer.
  *
- * Veri sabit tohumlu bir üreteçle oluşturulur; her açılışta aynıdır.
- * Yazma çağrıları (onay, düzenleme) bellekteki kopyayı değiştirir,
- * sayfa yenilenince sıfırlanır.
+ * Giriş: e-postada "musteri" geçerse müşteri (MUS-1003), yoksa üretici.
  */
-
-export const demoAcik = import.meta.env.DEV || import.meta.env.VITE_DEMO === "1";
 
 function tohumlu(tohum) {
   let t = tohum;
@@ -119,6 +114,14 @@ for (const p of PARTILER) {
 }
 // Model etiketi kapasite ile tutarlı olsun.
 CIHAZLAR.forEach((c) => { if (c.tip === "aku" && c.model.includes("200Ah")) c.kapasite_ah = 200; });
+// Test müşterisinin (MUS-1003) en az iki akü ve bir inverteri olsun; biri izlemede.
+{
+  const akuler = CIHAZLAR.filter((c) => c.tip === "aku" && c.musteri_id);
+  const inv = CIHAZLAR.find((c) => c.tip === "inverter" && c.durum === "aktif");
+  const izlemede = akuler.find((c) => c.durum === "uyari");
+  const saglikli = akuler.find((c) => c.durum === "aktif");
+  for (const c of [izlemede, saglikli, inv]) if (c) c.musteri_id = "MUS-1003";
+}
 
 const GARANTI = CIHAZLAR.filter((c) => c.durum === "arizali" || (c.durum === "uyari" && r() < 0.4))
   .slice(0, 7)
@@ -153,11 +156,18 @@ function sonOlcum(c) {
     const hucreler = Array.from({ length: 16 }, () => taban + tam(-12, 12));
     if (bozuk) hucreler[6] -= c.saglik < 65 ? tam(70, 120) : tam(35, 60);
     const fark = Math.max(...hucreler) - Math.min(...hucreler);
+    const sicakliklar = [tam(24, 33), tam(24, 33), bozuk ? tam(36, 43) : tam(25, 32), -40];
     return {
+      // backend'in kaydettiği türetilmiş alanlar (DEVIR §4)
+      gerilim: Number((hucreler.reduce((a, b) => a + b, 0) / 1000).toFixed(2)),
+      max_hucre_mv: Math.max(...hucreler),
+      min_hucre_mv: Math.min(...hucreler),
+      min_hucre_no: hucreler.indexOf(Math.min(...hucreler)) + 1,
+      max_sicaklik: Math.max(...sicakliklar),
       zaman: new Date(Date.now() - tam(2, 9) * 60000).toISOString(),
       hucreler,
       hucre_farki_mv: fark,
-      sicakliklar: [tam(24, 33), tam(24, 33), bozuk ? tam(36, 43) : tam(25, 32), -50],
+      sicakliklar,
       sarj_mos: true,
       desarj_mos: !(c.durum === "arizali" && r() < 0.5),
       dengeleme_hucreleri: bozuk ? [7] : [],
@@ -207,14 +217,32 @@ function gecmis(c, gun) {
 
 const bekle = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
-export async function demoIstek(yol, secenekler = {}) {
-  await bekle(120 + Math.random() * 200);
+const MUSTERI_OTURUMU = "MUS-1003";
+
+/** yol: "/de/..." (?sorgu dahil), govde: nesne, token: Bearer değeri. */
+export async function sahteIstek(yol, govde = {}, token = "") {
+  await bekle(40 + Math.random() * 80);
   const [yolu, sorgu = ""] = yol.split("?");
   const q = Object.fromEntries(new URLSearchParams(sorgu));
-  const govde = secenekler.body ? JSON.parse(secenekler.body) : {};
-  const cihaz = (id) => CIHAZLAR.find((c) => c.cihaz_id === id);
+  const musteri = token === "T-MUSTERI" ? MUSTERI_OTURUMU : null;
+  // Müşteri rolünde backend veriyi kendiliğinden süzer (DEVIR §3).
+  const gorunur = (c) => !musteri || c.musteri_id === musteri;
+  const cihaz = (id) => CIHAZLAR.find((c) => c.cihaz_id === id && gorunur(c));
 
   switch (yolu) {
+    case "/de/kaptcha":
+      return { svg: '<svg xmlns="http://www.w3.org/2000/svg" width="150" height="46"><rect width="150" height="46" fill="#F8FAFC"/><text x="22" y="31" font-size="24" font-family="monospace" fill="#0F172A">k4Tm9</text></svg>',
+               token: "kaptcha-test", saniye: 30 };
+    case "/de/giris": {
+      if (String(govde.kaptcha_cevap).toLowerCase() !== "k4tm9")
+        throw Object.assign(new Error("Dogrulama kodu hatali veya suresi doldu"), { durum: 400 });
+      const m = String(govde.eposta).includes("musteri");
+      return { erisim: m ? "T-MUSTERI" : "T-URETICI", yenile: "Y", eposta: govde.eposta };
+    }
+    case "/de/token/yenile":
+      return { erisim: token || "T-URETICI" };
+    case "/de/musteri/kayit":
+      return { musteri_id: "MST-9001", mesaj: "Basvurunuz alindi. Onaylandiginda giris yapabilirsiniz." };
     case "/de/ozet": {
       const s = (f) => CIHAZLAR.filter(f).length;
       return { ozet: {
@@ -229,7 +257,7 @@ export async function demoIstek(yol, secenekler = {}) {
       } };
     }
     case "/de/cihaz/liste":
-      return { cihazlar: CIHAZLAR.filter((c) =>
+      return { cihazlar: CIHAZLAR.filter((c) => gorunur(c) &&
         (!q.tip || c.tip === q.tip) && (!q.musteri_id || c.musteri_id === q.musteri_id)) };
     case "/de/cihaz/detay": {
       const c = cihaz(q.cihaz_id);
@@ -246,7 +274,7 @@ export async function demoIstek(yol, secenekler = {}) {
       return { olcumler: c?.musteri_id ? gecmis(c, Number(q.gun) || 30) : [] };
     }
     case "/de/musteri/liste":
-      return { musteriler: MUSTERILER };
+      return { musteriler: MUSTERILER.filter((m) => !musteri || m.musteri_id === musteri) };
     case "/de/musteri/guncelle": {
       const m = MUSTERILER.find((x) => x.musteri_id === govde.musteri_id);
       if (!m) throw Object.assign(new Error("Müşteri bulunamadı"), { durum: 404 });
@@ -256,7 +284,7 @@ export async function demoIstek(yol, secenekler = {}) {
       return { ok: true };
     }
     case "/de/garanti/liste":
-      return { talepler: GARANTI };
+      return { talepler: GARANTI.filter((t) => !musteri || t.musteri_id === musteri) };
     case "/de/garanti/guncelle": {
       const t = GARANTI.find((x) => x.talep_id === govde.talep_id);
       if (t) { t.durum = govde.durum ?? t.durum; t.sinif = govde.sinif ?? t.sinif; }
@@ -302,41 +330,6 @@ export async function demoIstek(yol, secenekler = {}) {
       };
       MUSTERILER.push(m);
       return { musteri_id: m.musteri_id };
-    }
-    case "/de/cihaz/uret": {
-      const adet = Math.max(1, Math.min(50, Number(govde.adet) || 1));
-      if (!PARTILER.find((p) => p.kod === govde.parti)) {
-        PARTILER.push({ kod: govde.parti, tip: govde.tip, gun: 0 });
-      }
-      const on = govde.tip === "aku" ? "AKU" : "INV";
-      const yil = String(new Date().getFullYear()).slice(2);
-      const ids = [];
-      for (let i = 0; i < adet; i++) {
-        sayac[on + yil] = (sayac[on + yil] || 40) + 1;
-        const id = `${on}-D${yil}-${String(sayac[on + yil]).padStart(4, "0")}`;
-        CIHAZLAR.push({
-          cihaz_id: id, tip: govde.tip, model: govde.model, parti: govde.parti,
-          musteri_id: null, durum: "depoda", saglik: null,
-          uretim_tarihi: new Date().toISOString(), kurulum_tarihi: null,
-          kapasite_ah: govde.kapasite_ah ?? null, hucre_sayisi: govde.tip === "aku" ? 16 : null,
-          guc_kw: govde.guc_kw ?? null, son_soc: null, gunluk_kwh: null,
-          oncelikli: null, ozet: "", kalan_gun: null, guven: null,
-        });
-        ids.push(id);
-      }
-      return { cihazlar: ids };
-    }
-    case "/de/cihaz/guncelle": {
-      const c = cihaz(govde.cihaz_id);
-      if (!c) throw Object.assign(new Error("Cihaz bulunamadı"), { durum: 404 });
-      if (govde.musteri_id !== undefined) {
-        c.musteri_id = govde.musteri_id || null;
-        if (c.musteri_id && !c.kurulum_tarihi) c.kurulum_tarihi = new Date().toISOString();
-      }
-      if (govde.durum) c.durum = govde.durum;
-      if (c.musteri_id && c.saglik == null) c.saglik = 100;
-      if (!c.musteri_id) { c.saglik = null; c.son_soc = null; c.gunluk_kwh = null; }
-      return { ok: true };
     }
     case "/de/garanti/talep": {
       const c = cihaz(govde.cihaz_id);

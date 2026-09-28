@@ -5,7 +5,6 @@ import { GRUPLAR } from "./Kenar";
 import { useVeri } from "../api/useVeri";
 import { mudahaleKuyrugu, basvuruListesi, garantiListesi } from "../api/servis";
 import { useAyarlar } from "../api/ayarlar";
-import { oturumOku } from "../api/oturum";
 import { ESIK } from "../veri/yardimci";
 
 const DETAY_ADI = { aku: "Akü", inverter: "İnverter", musteri: "Müşteri" };
@@ -23,7 +22,6 @@ function sayfaAdi(yol) {
 export default function UstCubuk({ menuAc, paletAc, sohbetAc }) {
   const { pathname } = useLocation();
   const { grup, ad } = sayfaAdi(pathname);
-  const demo = oturumOku()?.demo;
 
   return (
     <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-cizgi bg-zemin/80 px-4 backdrop-blur lg:px-6">
@@ -35,11 +33,6 @@ export default function UstCubuk({ menuAc, paletAc, sohbetAc }) {
         {grup && <span className="hidden text-sonuk sm:inline">{grup}</span>}
         {grup && <span className="hidden text-cizgi sm:inline">/</span>}
         <span className="truncate font-medium">{ad}</span>
-        {demo && (
-          <span className="ml-1 rounded-full bg-uyari/10 px-2 py-0.5 text-2xs font-medium text-uyari ring-1 ring-inset ring-uyari/25">
-            Demo verisi
-          </span>
-        )}
       </nav>
 
       <div className="ml-auto flex items-center gap-1.5">

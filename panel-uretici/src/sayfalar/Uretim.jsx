@@ -19,7 +19,7 @@ export default function Uretim() {
   const toplam  = PARTILER.reduce((t, p) => t + p.adet, 0);
   const sevk    = PARTILER.reduce((t, p) => t + p.sevk, 0);
   const kurulu  = PARTILER.reduce((t, p) => t + p.kurulu, 0);
-  const depoda  = toplam - sevk;
+  const depoda  = PARTILER.reduce((t, p) => t + p.depoda, 0);  // backend sayımı (parti/liste)
   const arizali = PARTILER.reduce((t, p) => t + p.arizali, 0);
 
   return (
@@ -37,11 +37,32 @@ export default function Uretim() {
 
       {/* parti tablosu */}
       <Kart
-        baslik="Üretim Partileri"
+        baslik="Üretim partileri"
         ustBilgi={<span className="text-xs text-soluk">{PARTILER.length} parti</span>}
-        cocuk={
-          <div className="overflow-x-auto">
-            <table className="tablo w-full min-w-[760px] text-sm">
+        cocuk={<>
+          <ul className="divide-y divide-cizgi md:hidden">
+            {PARTILER.map((p) => {
+              const oran = p.kurulu ? (p.arizali / p.kurulu) * 100 : 0;
+              return (
+                <li key={p.kod}>
+                  <button onClick={() => setSecili(secili === p.kod ? null : p.kod)}
+                    className="w-full px-4 py-3.5 text-left active:bg-panel2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-sm">{p.kod}</span>
+                      <span className={`text-sm tabular-nums ${oran > 8 ? "text-kritik" : oran > 0 ? "text-uyari" : "text-sonuk"}`}>
+                        {p.kurulu ? `%${oran.toFixed(1)} arıza` : "—"}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-sonuk">
+                      {p.tip === "aku" ? "Akü" : "İnverter"} · {p.adet} üretildi · {p.depoda} depoda · {p.kurulu} kurulu
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
+            <table className="tablo w-full text-sm">
               <thead>
                 <tr>
                   <th>Parti</th>
@@ -69,7 +90,7 @@ export default function Uretim() {
                       <td className="px-4 py-3 text-xs text-sonuk">{tarihTR(p.tarih)}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs">{p.adet}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs">{p.sevk}</td>
-                      <td className="px-4 py-3 text-right font-mono text-xs">{p.adet - p.sevk}</td>
+                      <td className="px-4 py-3 text-right font-mono text-xs">{p.depoda}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs">{p.kurulu}</td>
                       <td className={`px-4 py-3 text-right font-mono text-xs ${
                         yuksek ? "text-kritik" : oran > 0 ? "text-uyari" : "text-sonuk"}`}>
@@ -81,7 +102,7 @@ export default function Uretim() {
               </tbody>
             </table>
           </div>
-        }
+        </>}
       />
 
       {/* seçili parti detayı */}

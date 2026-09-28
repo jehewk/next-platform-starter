@@ -175,7 +175,7 @@ export default function AkuDetay() {
             <Satir e="Şarj MOSFET" v={d.sarjMos == null ? "—" : d.sarjMos ? "Açık" : "Kapalı"} iyi={d.sarjMos} />
             <Satir e="Deşarj MOSFET" v={d.desarjMos == null ? "—" : d.desarjMos ? "Açık" : "Kapalı"} iyi={d.desarjMos} />
             <Satir e="Dengeleme"
-                   v={d.dengeleme.length ? `Hücre ${d.dengeleme.join(", ")}` : "Pasif"}
+                   v={d.dengeleme == null ? "—" : d.dengeleme.length ? `Hücre ${d.dengeleme.join(", ")}` : "Pasif"}
                    iyi={null} />
             <Satir e="Hücre sayısı" v={`${aku.hucreSayisi ?? 16}S`} iyi={null} />
           </div>

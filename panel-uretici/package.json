@@ -1,16 +1,23 @@
 {
-  "name": "dennis-uretici-panel",
+  "name": "dennis-uretici-paneli",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "mobil:hazirla": "vite build && cap sync",
+    "mobil:ikonlar": "capacitor-assets generate --assetPath ../marka/cikti --iconBackgroundColor '#000000' --splashBackgroundColor '#000000'",
+    "android": "cap open android",
+    "ios": "cap open ios"
   },
   "dependencies": {
-    "amazon-cognito-identity-js": "^6.3.20",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.31.0",
     "react": "^19.2.8",
@@ -20,6 +27,8 @@
     "recharts": "^3.10.1"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.2",
     "@types/node": "^26.6.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

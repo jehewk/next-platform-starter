@@ -26,8 +26,8 @@ export default function MusteriDetay() {
   const akuler = cihazlar.filter((c) => c.tip === "aku");
   const invler = cihazlar.filter((c) => c.tip === "inverter");
   const olculen = cihazlar.filter((c) => c.saglik != null);
-  const ort = olculen.length
-    ? Math.round(olculen.reduce((t, c) => t + c.saglik, 0) / olculen.length) : null;
+  // Sistem durumu en kötü cihazdan gelir (DEVIR §8, hata 8).
+  const ort = olculen.length ? Math.min(...olculen.map((c) => c.saglik)) : null;
   const d = saglikDurumu(ort);
   const uretim = invler.reduce((t, c) => t + (c.gunlukKwh || 0), 0);
 
@@ -61,7 +61,7 @@ export default function MusteriDetay() {
       </div>
 
       <OlcumSeridi>
-        <Olcum etiket="Sistem sağlığı" deger={ort ?? "—"} vurgu={DURUM_YAZI[d]} />
+        <Olcum etiket="En düşük sağlık" deger={ort ?? "—"} vurgu={DURUM_YAZI[d]} />
         <Olcum etiket="Akü" deger={akuler.length} />
         <Olcum etiket="İnverter" deger={invler.length} />
         <Olcum etiket="Günlük üretim" deger={uretim.toFixed(1)} birim="kWh" />

@@ -224,7 +224,7 @@ function MusteriOzeti({ musteriler: { veri: musteriler, yukleniyor }, cihazlar }
             const cm = (cihazlar || []).filter((c) => c.musteriId === m.id);
             const sorunlu = cm.filter((c) => ["arizali", "uyari"].includes(c.durum)).length;
             const olculen = cm.filter((c) => c.saglik != null);
-            const ort = olculen.length ? Math.round(olculen.reduce((t, c) => t + c.saglik, 0) / olculen.length) : null;
+            const ort = olculen.length ? Math.min(...olculen.map((c) => c.saglik)) : null; // en kötü cihaz
             const d = saglikDurumu(ort);
             return (
               <Link key={m.id} to={`/musteri/${m.id}`} className="bg-panel p-4 transition-colors hover:bg-panel2/60">
