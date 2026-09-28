@@ -60,7 +60,18 @@ Betik önce ne yapacağını listeler ve onay ister, sonra:
    dosyalar korunur. Yüklemeden sonra `/de/kaptcha` ile sağlık kontrolü yapılır;
    geçmezse önceki kod **otomatik** geri yüklenir.
 3. **Üretici hesabı**: sorulan e-posta ve şifreyle (kalıcı şifre).
-4. **Web yayını** — varsayılan **S3 statik web sitesi**: her uygulama için bir
+4. **Web yayını** — varsayılan **AWS Amplify Hosting (HTTPS)**: tek Amplify
+   uygulamasının iki dalı — müşteri `https://main.<id>.amplifyapp.com`, üretici
+   `https://uretici.<id>.amplifyapp.com` (yeni hesaplarda Amplify tek uygulamaya
+   izin verir; dallar bu sınıra takılmaz). Alan adı Amplify konsolundan
+   (Hosting > Custom domains) ücretsiz sertifikayla bağlanır.
+
+   **Telefonlar neden S3 adresini açmıyor**: S3 web sitesi yalnızca http sunar;
+   telefon tarayıcıları (Chrome "Her zaman güvenli bağlantı", Safari) adresi
+   https'e çevirir ve bağlantı zaman aşımına uğrar. S3 yöntemi yalnızca
+   `-WebYontemi S3Web` ile kullanılır:
+
+   S3 statik web sitesi: her uygulama için bir
    kova, web sitesi barındırma açık, herkese açık okuma (yazma yalnızca sizde),
    `index.html` hem giriş hem hata sayfası (tek sayfa yönlendirme). Adres:
    `http://<kova>.s3-website.eu-central-1.amazonaws.com`, tarayıcıda açılır.

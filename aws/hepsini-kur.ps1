@@ -15,13 +15,17 @@
    3. Üretici hesabı               — panele girecek personel (Cognito)
    4. Web yayını                   — iki uygulama derlenip yüklenir; adresler
                                      tarayıcıda açılır. -WebYontemi:
-                                       S3Web (varsayılan): S3 statik web sitesi,
-                                         http://<kova>.s3-website.<bölge>.amazonaws.com
-                                         Alan adı bağlanacaksa kova adı alan adıyla
-                                         aynı olmalı: -MusteriAlan / -UreticiAlan
+                                       Amplify (varsayılan): HTTPS, telefonda açılır.
+                                         Tek Amplify uygulaması, iki dal:
+                                         https://main.<id>.amplifyapp.com (müşteri)
+                                         https://uretici.<id>.amplifyapp.com (üretici)
+                                       S3Web: S3 statik web sitesi, YALNIZCA http
+                                         (telefon tarayıcıları https'e zorlar, açılmaz).
+                                         Alan adı için kova adı = alan adı:
+                                         -MusteriAlan / -UreticiAlan
                                        Otomatik: özel kova + CloudFront (HTTPS);
                                          hesap CloudFront için doğrulanmamışsa Amplify
-                                       CloudFront / Amplify: yalnızca o yöntem
+                                       CloudFront: yalnızca CloudFront
 
   Oluşturulan kaynakların kimlikleri aws\kurulum-durumu.json'a yazılır.
 
@@ -44,8 +48,9 @@ param(
   [switch]$Onayla,
   [switch]$TarayiciAcma,
   [string]$ApiTaban,
-  # S3Web: S3 statik web sitesi (http). Otomatik: CloudFront, olmazsa Amplify (https).
-  [ValidateSet("S3Web", "Otomatik", "CloudFront", "Amplify")][string]$WebYontemi = "S3Web",
+  # Amplify: https (telefonda açılır). S3Web: S3 statik web sitesi (yalnızca http;
+  # telefon tarayıcıları https'e zorladığı için açılmaz). Otomatik: CloudFront, olmazsa Amplify.
+  [ValidateSet("Amplify", "S3Web", "Otomatik", "CloudFront")][string]$WebYontemi = "Amplify",
   # S3Web: bağlanacak alan adları; kova adı alan adıyla aynı olur (S3 bunu şart koşar)
   [string]$MusteriAlan,
   [string]$UreticiAlan,
@@ -198,13 +203,17 @@ function S3WebYayini($u) {
   if ($u.Alan) { $script:alanNotlari += "$($u.Alan)  CNAME  $kova.s3-website.$Bolge.amazonaws.com" }
 }
 
-# AWS Amplify Hosting: uygulama "dennis-<ad>", dal "main", HTTPS alan adı Amplify'dan.
+# AWS Amplify Hosting (HTTPS): tek uygulama, uygulama başına bir dal.
+# Müşteri "main" dalında (önceki kurulumun adresi korunur), üretici "uretici" dalında.
+# "dennis-musteri" adı önceki kurulumdan; varsa o uygulama kullanılır.
+$AMPLIFY_ADLARI = @("dennis-web", "dennis-musteri")
 function AmplifyYayini($u) {
-  $app = AmplifyUygulamasi "dennis-$($u.Anahtar)"
-  Tamam "Amplify uygulaması: $($app.appId)"
-  $alan = "main.$($app.defaultDomain)"
-  DurumKaydet $u.Anahtar @{ yontem = "amplify"; amplify = $app.appId; alan = $alan }
-  & (Join-Path $PSScriptRoot "panel-yayinla.ps1") -Panel $u.Klasor -AmplifyUygulama $app.appId @ortakParam
+  $dal = if ($u.Anahtar -eq "musteri") { "main" } else { $u.Anahtar }
+  $app = AmplifyUygulamasi $AMPLIFY_ADLARI $dal
+  Tamam "Amplify uygulaması: $($app.appId) ($($app.name)), dal: $dal"
+  $alan = "$dal.$($app.defaultDomain)"
+  DurumKaydet $u.Anahtar @{ yontem = "amplify"; amplify = $app.appId; dal = $dal; alan = $alan }
+  & (Join-Path $PSScriptRoot "panel-yayinla.ps1") -Panel $u.Klasor -AmplifyUygulama $app.appId -AmplifyDal $dal @ortakParam
   $script:adresler += [pscustomobject]@{ Ad = $u.Ad; Adres = "https://$alan" }
   $sonuclar[$u.Ad] = "https://$alan (Amplify)"
 }
@@ -251,7 +260,7 @@ if ($Atla -notcontains "backend") { Bilgi "1. Backend ayarları (izinler, giriş
 if ($Atla -notcontains "lambda")  { Bilgi "2. Lambda yamaları: müşteri düzenleme ucu, kayıt öznitelikleri, otomatik onay (yedekli, sağlık kontrollü)" }
 if ($Atla -notcontains "hesap")   { Bilgi "3. Üretici hesabı: $UreticiEposta" }
 if ($Atla -notcontains "web")     {
-  $yontemAdi = @{ S3Web = "S3 statik web sitesi (http)"; Otomatik = "CloudFront; olmazsa Amplify"; CloudFront = "CloudFront"; Amplify = "Amplify" }[$WebYontemi]
+  $yontemAdi = @{ S3Web = "S3 statik web sitesi (yalnızca http)"; Otomatik = "CloudFront; olmazsa Amplify"; CloudFront = "CloudFront"; Amplify = "Amplify, https" }[$WebYontemi]
   Bilgi "4. Web yayını ($yontemAdi): müşteri uygulaması ve üretici paneli"
 }
 if (-not $Onayla) {

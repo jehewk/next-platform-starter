@@ -17,7 +17,7 @@
 .EXAMPLE
   .\panel-yayinla.ps1 -Panel panel-musteri -Kova dennis-musteri-346532553636 -DagitimId E1ABCDEF2GHIJ
 .EXAMPLE
-  .\panel-yayinla.ps1 -Panel panel-musteri -AmplifyUygulama d1a2b3c4d5e6f7
+  .\panel-yayinla.ps1 -Panel panel-uretici -AmplifyUygulama d1a2b3c4d5e6f7 -AmplifyDal uretici
 #>
 [CmdletBinding()]
 param(
@@ -25,6 +25,7 @@ param(
   [string]$Kova,
   [string]$DagitimId,
   [string]$AmplifyUygulama,
+  [string]$AmplifyDal = "main",
   [string]$Bolge = "eu-central-1",
   [string]$Profil = $env:AWS_PROFILE
 )
@@ -55,8 +56,8 @@ if (-not (Test-Path (Join-Path $dist "index.html"))) { throw "dist\index.html ol
 Tamam "derlendi"
 
 if ($AmplifyUygulama) {
-  Adim "Amplify'a yükleniyor ($AmplifyUygulama)"
-  AmplifyYayinla $AmplifyUygulama $dist
+  Adim "Amplify'a yükleniyor ($AmplifyUygulama, dal: $AmplifyDal)"
+  AmplifyYayinla $AmplifyUygulama $dist $AmplifyDal
   Tamam "yayında"
   return
 }

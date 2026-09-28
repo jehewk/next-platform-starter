@@ -90,36 +90,40 @@ function ZipOlustur($klasor, $hedef) {
 }
 
 # ── AWS Amplify Hosting ─────────────────────────────────────────────────
-# CloudFront hesabı doğrulanmamış hesaplarda (AccessDenied: "must be verified")
-# HTTPS'li yayın için yedek yol. Uygulama "dennis-<ad>", dal "main".
+# HTTPS'li yayın. Yeni hesaplarda Amplify tek uygulamaya izin verir; bu yüzden
+# iki web uygulaması TEK Amplify uygulamasının iki dalında yayınlanır
+# (https://<dal>.<appId>.amplifyapp.com). S3 web sitesi yalnızca http sunar ve
+# telefon tarayıcıları https'e zorladığı için açılmaz.
 $AMPLIFY_SPA_KURALI = @(@{
   source = '</^[^.]+$|\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp|webmanifest)$)([^.]+$)/>'
   target = "/index.html"; status = "200" })
 
-function AmplifyUygulamasi($ad) {
-  $var = (Cagir amplify list-apps).apps | Where-Object { $_.name -eq $ad } | Select-Object -First 1
+# $adlar: kabul edilen uygulama adları (ilki yeni oluşturmada kullanılır)
+function AmplifyUygulamasi($adlar, $dal = "main") {
+  $adlar = @($adlar); $ad = $adlar[0]
+  $var = (Cagir amplify list-apps).apps | Where-Object { $adlar -contains $_.name } | Select-Object -First 1
   if ($var) { $app = $var }
   else {
     $kural = JsonDosyasi $AMPLIFY_SPA_KURALI
     $app = (Cagir amplify create-app --name $ad --platform WEB --custom-rules "file://$kural").app
   }
-  if (-not (Dene amplify get-branch --app-id $app.appId --branch-name main)) {
-    Cagir amplify create-branch --app-id $app.appId --branch-name main --stage PRODUCTION | Out-Null
+  if (-not (Dene amplify get-branch --app-id $app.appId --branch-name $dal)) {
+    Cagir amplify create-branch --app-id $app.appId --branch-name $dal --stage PRODUCTION | Out-Null
   }
   return $app
 }
 
-function AmplifyYayinla($appId, $dist) {
+function AmplifyYayinla($appId, $dist, $dal = "main") {
   $zip = Join-Path ([IO.Path]::GetTempPath()) ("de-amplify-" + [guid]::NewGuid().ToString("N").Substring(0, 8) + ".zip")
   ZipOlustur $dist $zip
-  $d = Cagir amplify create-deployment --app-id $appId --branch-name main
+  $d = Cagir amplify create-deployment --app-id $appId --branch-name $dal
   Invoke-WebRequest -Method Put -Uri $d.zipUploadUrl -InFile $zip -ContentType "application/zip" -UseBasicParsing | Out-Null
   Remove-Item $zip -ErrorAction SilentlyContinue
-  Cagir amplify start-deployment --app-id $appId --branch-name main --job-id $d.jobId | Out-Null
+  Cagir amplify start-deployment --app-id $appId --branch-name $dal --job-id $d.jobId | Out-Null
   $son = (Get-Date).AddMinutes(10)
   do {
     Start-Sleep -Seconds 5
-    $durum = (Cagir amplify get-job --app-id $appId --branch-name main --job-id $d.jobId).job.summary.status
+    $durum = (Cagir amplify get-job --app-id $appId --branch-name $dal --job-id $d.jobId).job.summary.status
     if ($durum -eq "SUCCEED") { return }
     if ($durum -in @("FAILED", "CANCELLED")) { throw "Amplify yayını başarısız ($durum). Amplify konsolunda iş $($d.jobId) günlüğüne bakın." }
   } while ((Get-Date) -lt $son)
