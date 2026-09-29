@@ -127,7 +127,15 @@ if ($Saglayici -eq "bedrock") {
     if ($h -match "don't have access|AccessDenied") {
       throw "Bu hesabın $Model modeline erişimi yok. AWS konsolu > Amazon Bedrock > Model access (bölge: $Bolge) bölümünden Amazon Nova modellerini açın, sonra betiği tekrar çalıştırın."
     }
-    if ($h -match 'model identifier is invalid|ValidationException') { throw "Model kimliği geçersiz ya da bu bölgede yok: $Model ($h)" }
+    if ($h -match 'Operation not allowed') {
+      # Yeni hesaplarda AWS'nin otomatik kısıtı (CloudFront'taki "must be verified" ile aynı); model/izin sorunu değil
+      Uyari "AWS bu hesapta Bedrock'u henüz açmamış (yeni hesap kısıtı; model ya da izin sorunu değil)."
+      Uyari "Çözüm: AWS Support > Create case > Account and billing > 'Account Activation / Verification'"
+      Uyari "konusuyla hesap doğrulaması isteyin (CloudFront talebine ekleyebilirsiniz). Açılınca betiği tekrar çalıştırın."
+      Uyari "O zamana kadar: .\asistan-kur.ps1 -Saglayici anthropic -WebArama 0   (Claude Haiku, ~0,5 cent/soru)"
+      throw "Bedrock bu hesapta henüz kullanılamıyor (Operation not allowed)."
+    }
+    if ($h -match 'model identifier is invalid') { throw "Model kimliği geçersiz ya da bu bölgede yok: $Model ($h)" }
     throw
   }
 } elseif (-not $anahtarVar -or $AnahtarYenile) {
