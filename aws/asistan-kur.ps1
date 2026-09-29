@@ -1,40 +1,46 @@
 ﻿<#
 .SYNOPSIS
-  Uygulamalardaki sohbeti gerçek bir dil modeline (Claude) bağlar: her soruya yanıt.
+  Uygulamalardaki sohbeti gerçek bir dil modeline bağlar: her soruya yanıt.
 
 .DESCRIPTION
   Sohbet bugün yalnızca yerel motorla, sınırlı sorulara yanıt veriyor. Bu betik
   POST /de/asistan ucunu kurar; soru, kullanıcının kendi sistem özetiyle
-  birlikte Claude'a gider. Veri ya da cihaz olmasa da her konuda yanıt verir;
-  güncel bilgi için web araması yapabilir. Uç yanıt veremezse uygulamalar yine
-  yerel motora düşer.
+  birlikte dil modeline gider. Veri ya da cihaz olmasa da her konuda yanıt
+  verir. Uç yanıt veremezse uygulamalar yine yerel motora düşer.
 
-   1) Anthropic API anahtarı — sorulur (ekranda görünmez; bu bilgisayarda
-      ANTHROPIC_API_KEY tanımlıysa o kullanılır), ücretsiz bir
-      çağrıyla doğrulanır, Lambda ortamına yazılır. Sohbete/dosyaya yazılmaz.
+  -Saglayici:
+    bedrock (varsayılan)  Amazon Bedrock, varsayılan model Amazon Nova Lite
+                          (eu.amazon.nova-lite-v1:0). Soru başına ~0,03 cent.
+                          API anahtarı yok, fatura AWS'ye gelir (maliyet-koruma
+                          bütçesi kapsar). Web araması yok.
+    anthropic             Claude (varsayılan claude-haiku-4-5, ~0,5 cent);
+                          web araması yapabilir, Anthropic API anahtarı gerekir.
+
+   1) Bedrock: Lambda'ya yalnızca bu modeli çağırma izni + küçük bir deneme
+      çağrısı. Anthropic: API anahtarı sorulur (ekranda görünmez), ücretsiz
+      bir çağrıyla doğrulanır, Lambda ortamına yazılır.
    2) Günlük soru sayacı — DynamoDB tablosu dennis-asistan-kota (+ Lambda izni)
-   3) Lambda katmanı dennis-asistan — Anthropic SDK + ekler\asistan\dennis_asistan.py,
-      Lambda'nın Python sürümü/mimarisi için derlenir
+   3) Lambda katmanı dennis-asistan — ekler\asistan\dennis_asistan.py
+      (Anthropic'te SDK de, Lambda'nın Python sürümü/mimarisi için derlenir)
    4) Lambda ayarları — katman eklenir, zaman aşımı en az 30 sn
    5) Lambda yaması — /de/asistan yönlendirmesi (yedekli, sağlık kontrollü)
    6) Uygulamalar — VITE_ASISTAN_YOLU=/de/asistan ile derlenip yayınlanır
 
-  Maliyet: soru başına ~0,5-1 cent (claude-haiku-4-5) + web araması başına
-  ~1 cent. Kişi başı ve toplam GÜNLÜK soru sınırı vardır; sayaç
-  çalışmazsa asistan kapalı kalır (sınırsız çalışmaz). Ayrıca Anthropic
-  Console > Settings > Limits'ten aylık harcama tavanı koyun: AWS'den farklı
-  olarak orada gerçek bir üst sınır vardır.
+  Kişi başı ve toplam GÜNLÜK soru sınırı vardır; sayaç çalışmazsa asistan
+  kapalı kalır (sınırsız çalışmaz).
 
   Tekrar çalıştırmak güvenlidir: değişmeyen hiçbir şey yeniden yapılmaz.
 
 .EXAMPLE
-  .\asistan-kur.ps1
-  .\asistan-kur.ps1 -Model claude-sonnet-5-5 -ToplamGunlukLimit 1000
-  .\asistan-kur.ps1 -AnahtarYenile              # API anahtarını değiştir
+  .\asistan-kur.ps1                                    # Amazon Nova Lite
+  .\asistan-kur.ps1 -Model eu.amazon.nova-2-lite-v1:0  # Türkçesi daha iyi, ~0,25 cent
+  .\asistan-kur.ps1 -Saglayici anthropic               # Claude Haiku 4.5 + web araması
+  .\asistan-kur.ps1 -Saglayici anthropic -AnahtarYenile
 #>
 [CmdletBinding()]
 param(
-  [string]$Model = "claude-haiku-4-5",
+  [ValidateSet("bedrock", "anthropic")][string]$Saglayici = "bedrock",
+  [string]$Model,
   [ValidateSet("low", "medium", "high")][string]$Efor = "low",
   [ValidateRange(1, 10000)][int]$KullaniciGunlukLimit = 20,
   [ValidateRange(1, 1000000)][int]$ToplamGunlukLimit = 2000,
@@ -54,6 +60,7 @@ $SDK_SURUMU   = "1.9.0"                      # sınanan Anthropic Python SDK sü
 $KATMAN       = "dennis-asistan"
 $KOTA_TABLOSU = "dennis-asistan-kota"
 $MODUL        = Join-Path (Join-Path (Join-Path $PSScriptRoot "ekler") "asistan") "dennis_asistan.py"
+if (-not $Model) { $Model = @{ bedrock = "eu.amazon.nova-lite-v1:0"; anthropic = "claude-haiku-4-5" }[$Saglayici] }
 $ortakParam = @{ Bolge = $Bolge }
 if ($Profil) { $ortakParam.Profil = $Profil }
 
@@ -68,7 +75,7 @@ function PyCalistir([string[]]$argumanlar) {
 Adim "Ön kontrol"
 HesapDogrula | Out-Null
 $PYTHON = PythonBul
-if (-not $PYTHON) { throw "Python bulunamadı. python.org'dan Python 3 kurun (katman derlemesi için gerekli)." }
+if (-not $PYTHON -and $Saglayici -eq "anthropic") { throw "Python bulunamadı. python.org'dan Python 3 kurun (katman derlemesi için gerekli)." }
 if (-not (Test-Path $MODUL)) { throw "Asistan modülü yok: $MODUL" }
 $yap = Cagir lambda get-function-configuration --function-name $LAMBDA
 if ("$($yap.Runtime)" -notmatch '^python(3\.\d+)$') { throw "Lambda çalışma ortamı Python değil ($($yap.Runtime))." }
@@ -78,13 +85,20 @@ $platform = if ($mimari -eq "arm64") { "manylinux2014_aarch64" } else { "manylin
 $anahtarVar = [bool]($yap.Environment -and $yap.Environment.Variables -and $yap.Environment.Variables.PSObject.Properties["ANTHROPIC_API_KEY"])
 Tamam "Lambda: python$pySurum, $mimari, zaman aşımı $($yap.Timeout) sn, bellek $($yap.MemorySize) MB"
 
-# Soru başına yaklaşık maliyet (USD): Haiku ~0,7 cent, Sonnet ~1,5, Opus ~3
-$soruBasi = if ($Model -like "claude-haiku*") { 0.007 } elseif ($Model -like "claude-sonnet*") { 0.015 } else { 0.03 }; $aylikEnFazla = [math]::Round($ToplamGunlukLimit * $soruBasi * 30)
+# Soru başına yaklaşık maliyet (USD; ~3000 girdi + ~400 çıktı token)
+$soruBasi = switch -Wildcard ($Model) {
+  "*nova-micro*" { 0.0002 } "*nova-lite*" { 0.0003 } "*nova-2-lite*" { 0.0025 }
+  "claude-haiku*" { 0.007 } "claude-sonnet*" { 0.015 } "claude-opus*" { 0.03 } default { 0.01 }
+}
+if ($Model -like "*nova-2-lite*") { $soruBasi = 0.0025 }
+$aylikEnFazla = [math]::Round($ToplamGunlukLimit * $soruBasi * 30, 1)
 Write-Host "`nYapılacaklar:" -ForegroundColor White
-Bilgi ("1. Anthropic API anahtarı " + $(if ($anahtarVar -and -not $AnahtarYenile) { "(zaten tanımlı; değiştirmek için -AnahtarYenile)" } else { "sorulacak" }))
+if ($Saglayici -eq "bedrock") { Bilgi "1. Amazon Bedrock: Lambda'ya $Model çağırma izni + deneme çağrısı (anahtar gerekmez)" }
+else { Bilgi ("1. Anthropic API anahtarı " + $(if ($anahtarVar -and -not $AnahtarYenile) { "(zaten tanımlı; değiştirmek için -AnahtarYenile)" } else { "sorulacak" })) }
 Bilgi "2. Günlük soru sayacı: kişi başı $KullaniciGunlukLimit, toplam $ToplamGunlukLimit soru/gün"
-Bilgi "3. Lambda katmanı $KATMAN (Anthropic SDK $SDK_SURUMU + asistan modülü)"
-Bilgi ("4. Model $Model" + $(if ($Model -notlike "claude-haiku*") { ", efor $Efor" }) + ", web araması soru başına en fazla $WebArama")
+Bilgi ("3. Lambda katmanı $KATMAN (" + $(if ($Saglayici -eq "anthropic") { "Anthropic SDK $SDK_SURUMU + " }) + "asistan modülü)")
+if ($Saglayici -eq "bedrock") { Bilgi "4. Model $Model (web araması yok)" }
+else { Bilgi ("4. Model $Model" + $(if ($Model -notlike "claude-haiku*") { ", efor $Efor" }) + ", web araması soru başına en fazla $WebArama") }
 Bilgi "5. Lambda yaması (/de/asistan) ve iki uygulamanın yeniden yayını"
 Bilgi "En kötü durumda (her gün sınır dolarsa) aylık ~$aylikEnFazla USD. Gerçek kullanım genelde çok daha az."
 if (-not $Onayla) {
@@ -95,7 +109,28 @@ if (-not $Onayla) {
 # ── 1) API anahtarı ───────────────────────────────────────────────────────
 $yeniAnahtar = $null
 $yerel = Join-Path ([IO.Path]::GetTempPath()) ("de-asistan-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
-if (-not $anahtarVar -or $AnahtarYenile) {
+if ($Saglayici -eq "bedrock") {
+  Adim "1/6 Amazon Bedrock ($Model)"
+  # Çapraz bölge profili (eu./us./global.) hem profil hem temel model için izin ister
+  $temel = $Model -replace '^(eu|us|apac|global|us-gov)\.', ''
+  $pol = JsonDosyasi @{ Version = "2012-10-17"; Statement = @(@{ Effect = "Allow"
+    Action = @("bedrock:InvokeModel")
+    Resource = @("arn:aws:bedrock:*:${HESAP}:inference-profile/$Model", "arn:aws:bedrock:*::foundation-model/$temel") }) }
+  Cagir iam put-role-policy --role-name $LAMBDA_ROLU --policy-name AsistanBedrock --policy-document "file://$pol" | Out-Null
+  Tamam "Lambda yalnızca bu modeli çağırabilir (AsistanBedrock)"
+  $m = JsonDosyasi @(@{ role = "user"; content = @(@{ text = "Merhaba! Tek kelimeyle yanıt ver." }) })
+  try {
+    $d = Cagir bedrock-runtime converse --model-id $Model --messages "file://$m" --inference-config "maxTokens=20"
+    Tamam ("deneme yanıtı: " + (("$($d.output.message.content[0].text)" -replace '\s+', ' ').Trim()))
+  } catch {
+    $h = $_.Exception.Message
+    if ($h -match "don't have access|AccessDenied") {
+      throw "Bu hesabın $Model modeline erişimi yok. AWS konsolu > Amazon Bedrock > Model access (bölge: $Bolge) bölümünden Amazon Nova modellerini açın, sonra betiği tekrar çalıştırın."
+    }
+    if ($h -match 'model identifier is invalid|ValidationException') { throw "Model kimliği geçersiz ya da bu bölgede yok: $Model ($h)" }
+    throw
+  }
+} elseif (-not $anahtarVar -or $AnahtarYenile) {
   Adim "1/6 Anthropic API anahtarı"
   Bilgi "console.anthropic.com > API Keys'ten bir anahtar oluşturun (sk-ant- ile başlar)."
   Bilgi "Aylık harcama tavanını da oradan koyun: Settings > Limits."
@@ -170,19 +205,21 @@ else {
 # ── 3) Lambda katmanı ─────────────────────────────────────────────────────
 Adim "3/6 Lambda katmanı ($KATMAN)"
 $ozet = (Get-FileHash $MODUL -Algorithm SHA256).Hash.Substring(0, 12).ToLower()
-$imza = "sdk=$SDK_SURUMU modul=$ozet py=$pySurum $mimari"
+$imza = if ($Saglayici -eq "anthropic") { "sdk=$SDK_SURUMU modul=$ozet py=$pySurum $mimari" } else { "bedrock modul=$ozet" }
 $katmanArn = $null
 $son = @((Dene lambda list-layer-versions --layer-name $KATMAN).LayerVersions) | Select-Object -First 1
 if ($son -and $son.Description -eq $imza) { $katmanArn = $son.LayerVersionArn; Tamam "güncel: sürüm $($son.Version)" }
 else {
   $kat = Join-Path $yerel "katman"; $py = Join-Path $kat "python"
   New-Item -ItemType Directory -Force -Path $py | Out-Null
-  Bilgi "Anthropic SDK $SDK_SURUMU derleniyor (python$pySurum, $platform)..."
-  $r = PyCalistir @("-m", "pip", "install", "anthropic==$SDK_SURUMU", "--target", $py, "--platform", $platform,
-                    "--implementation", "cp", "--python-version", $pySurum, "--only-binary=:all:",
-                    "--no-compile", "--quiet", "--disable-pip-version-check", "--no-warn-script-location")
-  if ($r.Kod -ne 0) { throw "SDK derlenemedi: $($r.Cikti)" }
-  Remove-Item (Join-Path $py "bin") -Recurse -Force -ErrorAction SilentlyContinue
+  if ($Saglayici -eq "anthropic") {
+    Bilgi "Anthropic SDK $SDK_SURUMU derleniyor (python$pySurum, $platform)..."
+    $r = PyCalistir @("-m", "pip", "install", "anthropic==$SDK_SURUMU", "--target", $py, "--platform", $platform,
+                      "--implementation", "cp", "--python-version", $pySurum, "--only-binary=:all:",
+                      "--no-compile", "--quiet", "--disable-pip-version-check", "--no-warn-script-location")
+    if ($r.Kod -ne 0) { throw "SDK derlenemedi: $($r.Cikti)" }
+    Remove-Item (Join-Path $py "bin") -Recurse -Force -ErrorAction SilentlyContinue
+  }  # Bedrock: Lambda'daki boto3 yeter, katmanda yalnızca modül
   Copy-Item $MODUL $py
   $zip = Join-Path $yerel "katman.zip"
   ZipOlustur $kat $zip
@@ -208,7 +245,7 @@ if ($arg.Count) {
 } else { Tamam "zaten güncel" }
 if ([int]$yap.MemorySize -lt 256) { Uyari "Lambda belleği $($yap.MemorySize) MB; asistan yavaş kalırsa konsoldan 256 MB yapın." }
 $ortam = @{
-  ASISTAN_MODEL = $Model; ASISTAN_EFFORT = $Efor; ASISTAN_KOTA_TABLOSU = $KOTA_TABLOSU
+  ASISTAN_SAGLAYICI = $Saglayici; ASISTAN_MODEL = $Model; ASISTAN_EFFORT = $Efor; ASISTAN_KOTA_TABLOSU = $KOTA_TABLOSU
   ASISTAN_KULLANICI_LIMIT = "$KullaniciGunlukLimit"; ASISTAN_TOPLAM_LIMIT = "$ToplamGunlukLimit"; ASISTAN_WEB_ARAMA = "$WebArama"
 }
 if ($yeniAnahtar) { $ortam.ANTHROPIC_API_KEY = $yeniAnahtar }

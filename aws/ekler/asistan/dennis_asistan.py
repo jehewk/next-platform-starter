@@ -1,7 +1,14 @@
 """Dennis Energy sohbet asistanı — POST /de/asistan.
 
-Lambda katmanında (dennis-asistan) Anthropic SDK ile birlikte durur; ana
-lambda_function.py yalnızca bu modülü çağırır (ekler/yamala.py, yama E).
+Lambda katmanında (dennis-asistan) durur; ana lambda_function.py yalnızca bu
+modülü çağırır (ekler/yamala.py, yama E).
+
+Sağlayıcı (ASISTAN_SAGLAYICI):
+  bedrock   (varsayılan) Amazon Bedrock Converse API, ör. Amazon Nova Lite.
+            Lambda'daki boto3 yeter; API anahtarı yok, fatura AWS'ye gelir.
+            Web araması yok.
+  anthropic Claude (Anthropic SDK katmanda olmalı, ANTHROPIC_API_KEY gerekir);
+            web araması yapabilir.
 Ana Lambda her isteği önce oturum için doğrular (oturumsuz → 401); buraya
 yalnızca giriş yapmış kullanıcılar ulaşır.
 
@@ -12,11 +19,12 @@ Maliyet koruması:
   · kullanıcı başına ve toplam GÜNLÜK soru sınırı (DynamoDB sayaç tablosu;
     tablo yoksa ya da erişilemiyorsa asistan kapalı kalır — sınırsız çalışmaz)
   · soru, geçmiş ve bağlam uzunluğu kırpılır; yanıt uzunluğu sınırlı
-  · web araması soru başına en fazla ASISTAN_WEB_ARAMA kez
+  · web araması (yalnızca anthropic) soru başına en fazla ASISTAN_WEB_ARAMA kez
 
 Ortam değişkenleri (aws/asistan-kur.ps1 ayarlar):
-  ANTHROPIC_API_KEY, ASISTAN_MODEL, ASISTAN_EFFORT, ASISTAN_KOTA_TABLOSU,
-  ASISTAN_KULLANICI_LIMIT, ASISTAN_TOPLAM_LIMIT, ASISTAN_WEB_ARAMA
+  ASISTAN_SAGLAYICI, ASISTAN_MODEL, ASISTAN_KOTA_TABLOSU, ASISTAN_KULLANICI_LIMIT,
+  ASISTAN_TOPLAM_LIMIT; anthropic için ayrıca ANTHROPIC_API_KEY, ASISTAN_EFFORT,
+  ASISTAN_WEB_ARAMA
 """
 import base64
 import json
@@ -24,13 +32,16 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 
-import anthropic
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError, ConnectTimeoutError, ReadTimeoutError
 
 MAKS_SORU = 2000          # karakter
 MAKS_BAGLAM = 6000
 MAKS_GECMIS = 12          # mesaj
 MAKS_MESAJ = 4000
 MAKS_CIKTI = 2048         # token; telefonda okunacak kısa yanıtlar
+VARSAYILAN_MODEL = {"bedrock": "eu.amazon.nova-lite-v1:0", "anthropic": "claude-haiku-4-5"}
 SURE = 24.0               # sn; API Gateway 29 sn'de keser
 TR_SAATI = timezone(timedelta(hours=3))
 
@@ -40,7 +51,7 @@ Her konuda soru sorabilir: kendi sistemi, güneş enerjisi, aküler, elektrik t�
 
 Kullanıcının kendi sistem verisi <sistem_verisi> etiketinde gelebilir. Sistemiyle ilgili sorularda yalnızca bu veriye dayan; veri yoksa ya da henüz cihazı yoksa bunu kısaca söyle ve genel bilgiyle yardımcı ol. Ölçüm, tarih ya da garanti bilgisi uydurma.
 
-Güncel bilgi gereken sorularda (fiyatlar, mevzuat, teşvikler, haberler) web aramasını kullan ve yanıtın sonunda kaynağın adresini ver.
+{GUNCEL}
 
 Türkçe, sade ve kısa yaz; teknik bir terim gerekiyorsa kısaca açıkla. Yanıt telefonda okunacak: birkaç kısa paragraf, gerekirse "- " ile başlayan madde listesi. Başlık, tablo ve kod bloğu kullanma.
 
@@ -54,9 +65,20 @@ Her konuda soru sorabilir: panel verisi, LiFePO4 hücre kimyası, BMS, SOC/SOH, 
 
 Panelin özet verisi <sistem_verisi> etiketinde gelebilir. Sistemle ilgili sorularda yalnızca bu veriye dayan; özet soruyu yanıtlamaya yetmiyorsa bunu söyle ve panelde hangi sayfaya bakılacağını öner. Sayı, seri numarası ya da tarih uydurma.
 
-Güncel bilgi gereken sorularda (mevzuat, standart revizyonları, hammadde fiyatları, rakipler, haberler) web aramasını kullan ve yanıtın sonunda kaynak adreslerini ver.
+{GUNCEL}
 
 Türkçe, net ve kısa yaz. Gerekirse "- " ile başlayan madde listesi kullan; başlık, tablo ve kod bloğu kullanma."""
+
+
+GUNCEL_WEB = ("Güncel bilgi gereken sorularda (fiyatlar, mevzuat, teşvikler, standartlar, haberler) "
+              "web aramasını kullan ve yanıtın sonunda kaynağın adresini ver.")
+GUNCEL_YOK = ("Güncel bilgi gereken sorularda (fiyatlar, mevzuat, teşvikler, standartlar, haberler) "
+              "bilgin eski olabilir; bunu kısaca belirt ve resmi kaynağa bakmasını öner.")
+
+
+def _sistem(panel, web):
+    metin = SISTEM_URETICI if panel == "uretici" else SISTEM_MUSTERI
+    return metin.replace("{GUNCEL}", GUNCEL_WEB if web else GUNCEL_YOK)
 
 
 def _ayar(ad, varsayilan):
@@ -175,19 +197,89 @@ def _metin(yanit):
     return metin
 
 
+def _bedrock_mesajlar(mesajlar):
+    """Anthropic biçimindeki mesajları Converse biçimine çevirir (aynı roller birleştirilir)."""
+    sonuc = []
+    for m in mesajlar:
+        parcalar = [m["content"]] if isinstance(m["content"], str) else [b["text"] for b in m["content"]]
+        icerik = [{"text": p} for p in parcalar if p]
+        if sonuc and sonuc[-1]["role"] == m["role"]:
+            sonuc[-1]["content"].extend(icerik)
+        else:
+            sonuc.append({"role": m["role"], "content": icerik})
+    return sonuc
+
+
+_bedrock = None
+
+
+def _bedrock_istemci():
+    global _bedrock
+    if _bedrock is None:
+        _bedrock = boto3.client("bedrock-runtime", config=Config(
+            connect_timeout=5, read_timeout=SURE, retries={"max_attempts": 2, "mode": "standard"}))
+    return _bedrock
+
+
+def _bedrock_yanitla(model, sistem, mesajlar):
+    try:
+        y = _bedrock_istemci().converse(
+            modelId=model,
+            system=[{"text": sistem}],
+            messages=_bedrock_mesajlar(mesajlar),
+            inferenceConfig={"maxTokens": MAKS_CIKTI, "temperature": 0.3},
+        )
+    except (ReadTimeoutError, ConnectTimeoutError):
+        return 504, {"hata": "Yanıt çok uzun sürdü; soruyu kısaltıp tekrar deneyin."}
+    except ClientError as e:
+        kod = e.response.get("Error", {}).get("Code", "")
+        print(f"asistan bedrock hatasi {kod}: {e}")
+        if kod in ("ThrottlingException", "ServiceQuotaExceededException"):
+            return 429, {"hata": "Asistan şu an yoğun; birkaç dakika sonra tekrar deneyin."}
+        if kod == "ModelTimeoutException":
+            return 504, {"hata": "Yanıt çok uzun sürdü; soruyu kısaltıp tekrar deneyin."}
+        if kod == "AccessDeniedException":
+            return 503, {"hata": "Asistan şu an kullanılamıyor."}
+        return 502, {"hata": "Asistan şu an yanıt veremiyor."}
+
+    kullanim = y.get("usage") or {}
+    durum = y.get("stopReason")
+    print(json.dumps({"asistan": {"model": model, "girdi": kullanim.get("inputTokens"),
+                                  "cikti": kullanim.get("outputTokens"), "arama": 0, "durum": durum}}))
+    icerik = ((y.get("output") or {}).get("message") or {}).get("content") or []
+    metin = "".join(b.get("text", "") for b in icerik).strip()
+    if durum in ("guardrail_intervened", "content_filtered"):
+        return 200, {"yanit": "Bu soruya yanıt veremiyorum. Başka bir konuda yardımcı olabilirim."}
+    if not metin:
+        return 502, {"hata": "Asistan şu an yanıt veremiyor."}
+    if durum == "max_tokens":
+        metin += " …"
+    return 200, {"yanit": metin}
+
+
 def yanitla(body, event, dynamodb):
     """Döner: (http_kodu, gövde)."""
-    soru, mesajlar = _mesajlar(body if isinstance(body, dict) else {})
+    body = body if isinstance(body, dict) else {}
+    soru, mesajlar = _mesajlar(body)
     if not soru:
         return 400, {"hata": "Soru boş olamaz."}
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    saglayici = _ayar("ASISTAN_SAGLAYICI", "bedrock")
+    if saglayici not in VARSAYILAN_MODEL:
+        return 503, {"hata": "Asistan henüz yapılandırılmadı."}
+    if saglayici == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
         return 503, {"hata": "Asistan henüz yapılandırılmadı."}
     engel = _kota(dynamodb, _kullanici(event))
     if engel:
         return engel[0], {"hata": engel[1]}
 
-    model = _ayar("ASISTAN_MODEL", "claude-haiku-4-5")
-    sistem = SISTEM_URETICI if body.get("panel") == "uretici" else SISTEM_MUSTERI
+    model = _ayar("ASISTAN_MODEL", VARSAYILAN_MODEL[saglayici])
+    if saglayici == "bedrock":
+        return _bedrock_yanitla(model, _sistem(body.get("panel"), False), mesajlar)
+    return _anthropic_yanitla(model, _sistem(body.get("panel"), int(_ayar("ASISTAN_WEB_ARAMA", "3")) > 0), mesajlar)
+
+
+def _anthropic_yanitla(model, sistem, mesajlar):
+    import anthropic  # yalnızca bu sağlayıcıda; SDK Lambda katmanında
     istek = _istek(model, sistem, mesajlar)
     istemci = anthropic.Anthropic(max_retries=1)
     son = time.monotonic() + SURE

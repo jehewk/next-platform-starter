@@ -125,22 +125,28 @@ CloudFront reddinde Amplify'a geçiş).
 
 ## Sohbet asistanı (her soruya yanıt)
 
-`aws\asistan-kur.ps1` sohbeti Claude'a bağlar: veri ya da cihaz olmasa da her konuda
-yanıt verir, güncel bilgi için web araması yapar, kullanıcının kendi sistem özetini
-bilir. Anthropic API anahtarı gerekir (console.anthropic.com > API Keys); betik sorar
-(ekranda görünmez), ücretsiz bir çağrıyla doğrular ve Lambda ortamına yazar.
+`aws\asistan-kur.ps1` sohbeti bir dil modeline bağlar: veri ya da cihaz olmasa da her
+konuda yanıt verir, kullanıcının kendi sistem özetini bilir. Varsayılan: **Amazon
+Bedrock, Amazon Nova Lite** — API anahtarı gerekmez, fatura AWS'ye gelir.
 
 ```powershell
-.\asistan-kur.ps1                                        # varsayılan: claude-haiku-4-5
-.\asistan-kur.ps1 -KullaniciGunlukLimit 50 -ToplamGunlukLimit 500
-.\asistan-kur.ps1 -AnahtarYenile                         # anahtarı değiştir
+.\asistan-kur.ps1                                     # Nova Lite (~0,03 cent/soru)
+.\asistan-kur.ps1 -Model eu.amazon.nova-2-lite-v1:0   # Türkçesi daha iyi (~0,25 cent)
+.\asistan-kur.ps1 -Saglayici anthropic                # Claude Haiku 4.5 + web araması (~0,5-1 cent)
+.\asistan-kur.ps1 -KullaniciGunlukLimit 30 -ToplamGunlukLimit 3000
 ```
 
-Maliyet (claude-haiku-4-5): soru başına ~0,5-1 cent + web araması başına ~1 cent.
-Kişi başı (20) ve toplam (2000) günlük soru sınırı vardır; varsayılanlarla en kötü
-durum ~420 USD/ay. Gerçek tavan için Anthropic Console > Settings > Limits'ten aylık
-harcama sınırı koyun. Daha güçlü model: `-Model claude-sonnet-5-5` (~2 kat) ya da
-`claude-opus-5-5` (~4 kat).
+| Model | Soru başı | 100 kişi × 20 soru/gün, aylık en fazla |
+|---|---|---|
+| Nova Lite (varsayılan) | ~0,03 cent | ~18 USD |
+| Nova 2 Lite | ~0,25 cent | ~150 USD |
+| Claude Haiku 4.5 | ~0,5-1 cent | ~300+ USD |
+
+Nova'da web araması yoktur; güncel bilgi isteyen sorularda asistan bilgisinin eski
+olabileceğini söyler. Betik "modele erişimi yok" derse: AWS konsolu > Amazon Bedrock >
+Model access (eu-central-1) bölümünden Amazon Nova modellerini açıp tekrar çalıştırın.
+Kişi başı (20) ve toplam (2000) günlük soru sınırı vardır; sayaç çalışmazsa asistan
+kapalı kalır.
 
 ## Maliyet koruması
 

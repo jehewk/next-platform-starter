@@ -51,12 +51,12 @@ hata diğerinde de düzeltilmeli. Mimari ve yayın: kök `YAYIN.md`.
   tanımlıysa soru + son 12 mesaj + `baglam` (kullanıcının KENDİ verisinin kısa özeti,
   `baglamOlustur`) + `panel` gönderilir. 429/504'te sunucunun mesajı gösterilir;
   diğer hatalarda yerel motor (`yanitla`) yanıtlar.
-- Sunucu: `aws/ekler/asistan/dennis_asistan.py` Lambda katmanında (Anthropic Python
-  SDK, varsayılan `claude-haiku-4-5` — `ASISTAN_MODEL` ile değişir; Opus/Sonnet
-  seçilirse düşük efor ve `fallbacks: "default"` eklenir; web araması). Ana
-  Lambda'ya yalnızca yönlendirme eklenir (`aws/ekler/yamala.py`, yama E). Kişi başı
-  ve toplam günlük soru sınırı DynamoDB `dennis-asistan-kota` tablosunda; sayaç
-  çalışmazsa uç kapalı kalır.
+- Sunucu: `aws/ekler/asistan/dennis_asistan.py` Lambda katmanında. Sağlayıcı
+  `ASISTAN_SAGLAYICI`: `bedrock` (varsayılan; boto3 Converse, `eu.amazon.nova-lite-v1:0`,
+  web araması yok) ya da `anthropic` (Anthropic SDK katmanda, `claude-haiku-4-5`, web
+  araması). Ana Lambda'ya yalnızca yönlendirme eklenir (`aws/ekler/yamala.py`, yama E).
+  Kişi başı ve toplam günlük soru sınırı DynamoDB `dennis-asistan-kota` tablosunda;
+  sayaç çalışmazsa uç kapalı kalır.
 - Kurulum/güncelleme: `aws/asistan-kur.ps1` (katmanı Lambda'nın Python sürümü ve
   mimarisi için derler; modül değişince yeni katman sürümü yayımlar).
 - Test: `test/sahte-api.mjs` `/de/asistan` bağlamı yansıtır; e2e kalın yazı, kaynak
