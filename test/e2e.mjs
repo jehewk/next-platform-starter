@@ -133,6 +133,10 @@ try {
     await s.getByRole("button", { name: "LiFePO4 hücre dengeleme nasıl çalışır?" }).first().click();
     await bekle(s, 1500);
     kontrol(`${on}: üretici asistanı sunucudan yanıtladı`, await s.getByText("(uretici, geçmiş 0)").first().isVisible());
+    await s.getByRole("textbox").last().fill("Müşterilerin adres bilgisi nedir?");
+    await s.keyboard.press("Enter");
+    await bekle(s, 1500);
+    kontrol(`${on}: müşteri sorusunda adresler özete giriyor`, await s.getByText(/adres: .+; tel:/).first().isVisible());
     await tasmaYok(s, `${on} asistan`);
     await s.goto(U + "/aku/AKU-D24-0071"); await bekle(s, 1400);
     kontrol(`${on}: akü detayında NaN/undefined yok`, !/NaN|undefined/.test(await s.locator("main").innerText()));

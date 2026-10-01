@@ -73,6 +73,20 @@ async function baglamOlustur(soru) {
     `arızalı ${say((c) => c.durum === "arizali")}, izlemede ${say((c) => c.durum === "uyari")}.`);
   const uretim = cihazlar.filter((c) => c.tip === "inverter" && c.musteriId).reduce((t, c) => t + (c.gunlukKwh || 0), 0);
   s.push(`Müşteri: ${musteriler.length}. Üretim partisi: ${partiler.length}. Bugünkü toplam üretim: ${uretim.toFixed(1)} kWh.`);
+
+  // Müşteriler: soru müşteriyle ilgiliyse iletişim bilgileriyle ve en başta
+  // (sunucu özeti 6000 karakterde keser), değilse kısa liste olarak en sonda.
+  const q = soru.toLocaleLowerCase("tr");
+  const adiGeciyor = (m) => (m.ad || "").toLocaleLowerCase("tr").split(/\s+/).some((p) => p.length > 2 && q.includes(p));
+  const musteriSorusu = /müşteri|musteri|adres|telefon|iletişim|iletisim|e-?posta|mail|nerede|kim/.test(q) || musteriler.some(adiGeciyor);
+  const cihazSayisi = (m) => cihazlar.filter((c) => c.musteriId === m.id).length;
+  const siraliMusteriler = [...musteriler].sort((a, b) => Number(adiGeciyor(b)) - Number(adiGeciyor(a)));
+  if (musteriSorusu && musteriler.length) {
+    s.push(`Müşteriler (${musteriler.length}${musteriler.length > 30 ? ", ilk 30" : ""}):`);
+    siraliMusteriler.slice(0, 30).forEach((m) => s.push(`- ${m.ad} (${m.id}, ${m.tip || "-"}): ` +
+      `${[m.ilce, m.il].filter(Boolean).join("/") || "-"}; adres: ${String(m.adres || "-").slice(0, 100)}; ` +
+      `tel: ${m.telefon || "-"}; e-posta: ${m.email || "-"}; ${cihazSayisi(m)} cihaz`));
+  }
   const partiSira = [...partiler].map((p) => ({ ...p, oran: p.kurulu ? (p.arizali / p.kurulu) * 100 : 0 })).sort((a, b) => b.oran - a.oran);
   if (partiSira.length) {
     s.push("Arıza oranı en yüksek partiler:");
@@ -89,6 +103,10 @@ async function baglamOlustur(soru) {
   s.push(`Garanti talepleri: ${talepler.length} (${acik.length} inceleniyor).`);
   acik.slice(0, 10).forEach((t) => s.push(`- ${t.cihazId}${t.aciklama ? `: ${String(t.aciklama).slice(0, 120)}` : ""}`));
   if (isler.length) s.push(`Arıza öngörüsü olan cihaz: ${isler.length}.`);
+  if (!musteriSorusu && musteriler.length) {
+    s.push(`Müşteri listesi: ${siraliMusteriler.slice(0, 15).map((m) => `${m.ad} (${m.il || "-"}, ${cihazSayisi(m)} cihaz)`).join("; ")}` +
+      `${musteriler.length > 15 ? ` ve ${musteriler.length - 15} müşteri daha` : ""}.`);
+  }
   const kod = soru.match(/\b(AKU|INV)-D\d{2}-\d{4}\b/i)?.[0]?.toUpperCase();
   if (kod) {
     try {
