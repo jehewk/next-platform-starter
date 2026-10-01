@@ -64,6 +64,12 @@ if (-not $Model) { $Model = @{ bedrock = "eu.amazon.nova-lite-v1:0"; anthropic =
 $ortakParam = @{ Bolge = $Bolge }
 if ($Profil) { $ortakParam.Profil = $Profil }
 
+# Yapıştırmada gelen görünmez karakterleri (^V, satır sonu, BOM), boşlukları ve tırnakları atar.
+function AnahtarTemizle([string]$a) {
+  if (-not $a) { return "" }
+  return (($a -replace '[\x00-\x20\x7F\uFEFF\u200B]', '') -replace '^["'']+|["'']+$', '')
+}
+
 function PyCalistir([string[]]$argumanlar) {
   $eski = $ErrorActionPreference; $ErrorActionPreference = "Continue"
   $cikti = & $PYTHON[0] @(@($PYTHON | Select-Object -Skip 1) + $argumanlar) 2>&1
@@ -147,12 +153,30 @@ if ($Saglayici -eq "bedrock") {
     $yeniAnahtar = $env:ANTHROPIC_API_KEY.Trim()
     Bilgi "bu bilgisayardaki ANTHROPIC_API_KEY kullanılıyor"
   } else {
+    # Windows PowerShell 5.1'de gizli giriş satırına Ctrl+V çoğu zaman yapışmaz ("^V" gider).
+    # Bu yüzden: anahtarı kopyalayıp boş Enter'a basmak yeterli — panodan okunur.
+    Bilgi "Anahtarı console.anthropic.com'dan KOPYALAYIN (Ctrl+C), sonra burada yalnızca Enter'a basın."
+    Bilgi "(İsterseniz sağ tıkla yapıştırıp Enter'a da basabilirsiniz.)"
     $guvenli = Read-Host "  API anahtarı (ekranda görünmez)" -AsSecureString
     $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($guvenli)
-    try { $yeniAnahtar = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr).Trim() }
+    try { $yeniAnahtar = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
     finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+    if ((AnahtarTemizle $yeniAnahtar) -notmatch '^sk-ant-') {
+      $pano = $null
+      try { $pano = (Get-Clipboard -Raw -ErrorAction Stop) } catch { }
+      if ((AnahtarTemizle $pano) -match '^sk-ant-') {
+        $yeniAnahtar = $pano
+        Bilgi "anahtar panodan okundu"
+        try { Set-Clipboard -Value " " } catch { }   # anahtar panoda kalmasın
+      }
+    }
   }
-  if ($yeniAnahtar -notmatch '^sk-ant-') { throw "Bu bir Anthropic API anahtarına benzemiyor (sk-ant- ile başlamalı)." }
+  $yeniAnahtar = AnahtarTemizle $yeniAnahtar
+  if ($yeniAnahtar -notmatch '^sk-ant-') {
+    # Anahtarın kendisi gösterilmez; yalnızca teşhis için uzunluk ve ilk karakter türü
+    $ipucu = if (-not $yeniAnahtar) { "hiçbir şey alınmadı" } else { "$($yeniAnahtar.Length) karakter alındı, başı 'sk-ant-' değil" }
+    throw "Anahtar okunamadı ($ipucu). Anahtarı kopyalayıp (Ctrl+C) betiği yeniden çalıştırın ve soruda yalnızca Enter'a basın."
+  }
 
   # Ücretsiz doğrulama: model bilgisini okumak anahtarı ve modele erişimi sınar
   Bilgi "anahtar doğrulanıyor (ücretsiz çağrı)..."
