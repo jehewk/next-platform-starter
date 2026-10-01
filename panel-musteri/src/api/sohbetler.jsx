@@ -57,7 +57,7 @@ export function SohbetSaglayici({ children }) {
       yanit = { metin: `Yanıt oluşturulamadı: ${e.message}`, kaynak: "yerel" };
     }
     if (typeof yanit === "string") yanit = { metin: yanit, kaynak: "yerel" };
-    sohbetGuncelle(id, (s) => ({ ...s, mesajlar: [...s.mesajlar, { rol: "asistan", metin: yanit.metin, kaynak: yanit.kaynak, zaman: Date.now(), ...(yanit.arama ? { arama: yanit.arama } : {}) }] }));
+    sohbetGuncelle(id, (s) => ({ ...s, mesajlar: [...s.mesajlar, { rol: "asistan", metin: yanit.metin, kaynak: yanit.kaynak, zaman: Date.now(), ...(yanit.arama ? { arama: yanit.arama } : {}), ...(yanit.grafik ? { grafik: yanit.grafik } : {}) }] }));
     setBekleyen(null);
   }, [aktif, bekleyen]);
 

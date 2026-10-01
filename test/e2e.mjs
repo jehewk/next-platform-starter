@@ -143,6 +143,17 @@ try {
       && !(await s.getByText("VERİ SIZDI").count()));
     await sor("ya üretim değilde sohbet etmek istiyorum");
     kontrol(`${on}: "üretim değil de sohbet" dil modeline gitti`, await s.getByText("(uretici, geçmiş 4)").first().isVisible());
+    await sor("geçmiş akü sağlık verisi göster");
+    kontrol(`${on}: akü sağlık geçmişi yerelde, kötüleşenler sıralı`,
+      await s.getByText(/Son 30 gün, \d+ akü \(hücre gerilim farkı/).first().isVisible()
+      && await s.getByText(/En hızlı kötüleşenler/).first().isVisible());
+    kontrol(`${on}: sohbette gidişat grafiği`, (await s.locator("main figure .recharts-line-curve").count()) > 0
+      && (await s.locator("main figure").last().innerText()).includes("sınır 80 mV"));
+    await s.locator("main figure").last().scrollIntoViewIfNeeded();
+    await s.screenshot({ path: join(CIKTI, `${on}-07-saglik-gecmisi.png`) });
+    await sor("AKU-D24-0071 son 2 haftada nasıl değişti");
+    kontrol(`${on}: tek akünün gidişatı (seçilen dönem)`, await s.getByText(/AKU-D24-0071 — son 14 günün hücre gerilim farkı/).first().isVisible());
+    kontrol(`${on}: sağlık geçmişi dil modeline gitmedi`, !(await s.getByText("(uretici, geçmiş 6)").count()));
     await s.locator('input[type="file"]').setInputFiles(join(kok, "panel-uretici/public/ikon-512.png"));
     await sor("bu akünün etiketi ne diyor");
     kontrol(`${on}: fotoğraf incelendi`, await s.getByText(/FOTOĞRAF İNCELENDİ/).first().isVisible());
@@ -191,6 +202,13 @@ try {
     await s.keyboard.press("Enter");
     await bekle(s, 1500);
     kontrol(`${on}: günlük sınır mesajı gösterildi`, await s.getByText("Bugünkü soru hakkınız doldu").first().isVisible());
+    await s.getByRole("textbox").last().fill("akümün sağlık geçmişini göster");
+    await s.keyboard.press("Enter"); await bekle(s, 2000);
+    kontrol(`${on}: müşteri akü sağlık geçmişi sade dille`, await s.getByText(/hücreler (arasındaki denge|dengeli)/).first().isVisible());
+    kontrol(`${on}: müşteri grafiğinde mV yok, sınır çizgisi var`, (await s.locator("main figure").count()) > 0
+      && !/mV/.test(await s.locator("main figure").last().innerText()) && /sınır/.test(await s.locator("main figure").last().innerText()));
+    await s.locator("main figure").last().scrollIntoViewIfNeeded();
+    await s.screenshot({ path: join(CIKTI, `${on}-09-saglik-gecmisi.png`) });
     await s.locator('input[type="file"]').setInputFiles(join(kok, "panel-musteri/public/ikon-512.png"));
     await s.getByAltText("Eklenen fotoğraf").waitFor({ timeout: 5000 }).catch(() => {});
     kontrol(`${on}: fotoğraf önizlemesi ve gizlilik notu`, await s.getByAltText("Eklenen fotoğraf").isVisible()

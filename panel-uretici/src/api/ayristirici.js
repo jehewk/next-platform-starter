@@ -113,6 +113,26 @@ export function sohbetIstegi(c) {
   return c.w.some((x, i) => /^degil(de|im|sin|iz)?$/.test(x) && !/^mi/.test(c.w[i + 1] || ""));
 }
 
+// Akü sağlık geçmişi: sağlık kavramı + geçmiş/gidişat kavramı. Yazım hatası toleransı
+// yok (kökEslesir "degis" ile "degil"i eşlerdi); kök başta olmalı.
+const SAGLIK = ["saglik", "soh", "omur", "hucre", "denge", "yaslan", "yipran", "kapasite"];
+const GECMIS = ["gecmis", "degis", "trend", "egilim", "kotules", "kotuye", "iyiles", "yaslan", "zamanla",
+  "seyir", "gidisat", "tarihce", "grafik", "gelisim"];
+const basla = (c, kokler) => c.w.some((x) => kokler.some((k) => x.startsWith(k)));
+
+/** Sorulan dönem (gün): "son 3 ay" → 90, "bu hafta" → 7; varsayılan 30, 7–90 arası. */
+export function gunSayisi(c, simdi = new Date()) {
+  const z = zamanAraligi(c, simdi);
+  if (!z) return 30;
+  return Math.min(90, Math.max(7, Math.ceil((simdi - z.bas) / GUN)));
+}
+
+/** "akü sağlık geçmişi", "son 1 ayda SOH nasıl değişti", "akümün sağlığı zamanla kötüleşiyor mu" */
+export function saglikGecmisiMi(c) {
+  const saglik = basla(c, SAGLIK) || c.var(["aku", "batarya"]);
+  return saglik && (basla(c, GECMIS) || (basla(c, SAGLIK) && !!zamanAraligi(c)));
+}
+
 /* ── üretici paneli ──────────────────────────────────────────────────── */
 
 const K = {
@@ -158,13 +178,16 @@ export function ilGeciyor(c, iller) {
 export function ureticiNiyeti(soru, { musteriler = [] } = {}) {
   const c = soruCoz(soru);
   const kod = String(soru).match(/\b(AKU|INV)-D\d{2}-\d{4}\b/i)?.[0]?.toUpperCase();
-  if (kod) return { niyet: "cihaz", kod };
+  if (kod) return saglikGecmisiMi(c) || basla(c, GECMIS) ? { niyet: "cihaz_gecmis", kod, gun: gunSayisi(c) } : { niyet: "cihaz", kod };
   // "mail adresi" e-postadır: e-posta önce
   const alan = c.var(K.eposta) ? "eposta" : c.var(K.telefon) ? "telefon" : c.var(K.adres) ? "adres" : "hepsi";
   // Müşteri adı en güçlü veri işaretidir ("Ahmet'e nasıl ulaşırım" de bir veri sorusudur)
   const adlar = adiGecenler(c, musteriler);
+  const saglikGecmisi = saglikGecmisiMi(c);
+  if (adlar.length && saglikGecmisi) return { niyet: "saglik_gecmisi", gun: gunSayisi(c), musteriler: adlar };
   if (adlar.length) return { niyet: "musteri_bilgi", musteriler: adlar, alan };
   if (sohbetIstegi(c)) return null;
+  if (saglikGecmisi) return { niyet: "saglik_gecmisi", gun: gunSayisi(c), musteriler: [] };
   const zaman = zamanAraligi(c);
   const musteriKonusu = c.var(K.musteri);
   // Müşteri/iletişim/kayıt geçen soru panelde her zaman veri sorusudur ("adres bilgisi nedir")
@@ -209,7 +232,10 @@ const kendiMi = (c) => c.w.some((x) => ["benim", "bizim", "evdeki", "evimdeki"].
 /** Müşteri uygulaması niyeti; döner: {niyet} ya da null (dil modeline). */
 export function musteriNiyeti(soru) {
   const c = soruCoz(soru);
-  if (sohbetIstegi(c) || bilgiSorusuMu(c)) return null;                       // "akümün ömrünü nasıl uzatırım" → tavsiye
+  if (sohbetIstegi(c)) return null;
+  // "akümün sağlığı zamanla nasıl değişti" bir veri sorusudur; bilgi sorusu denetiminden önce
+  if (saglikGecmisiMi(c) && (kendiMi(c) || !bilgiSorusuMu(c))) return { niyet: "saglik_gecmisi", gun: gunSayisi(c) };
+  if (bilgiSorusuMu(c)) return null;                       // "akümün ömrünü nasıl uzatırım" → tavsiye
   const veriIstiyor = kendiMi(c) || VERI.some((k) => c.w.some((x) => x.startsWith(k.trim())));
   if (c.var(M.talep) && (veriIstiyor || c.w.length <= 4)) return { niyet: "talep" };
   if (c.var(M.garanti) && (veriIstiyor || c.w.length <= 4)) return { niyet: "garanti" };

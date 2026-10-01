@@ -5,6 +5,8 @@ import {
 } from "./servis";
 import { garantiDurumu, sureMetni, tarihTR, utcTarih, KAYNAK_ADI, DURUM_ADI } from "../veri/yardimci";
 import { ureticiNiyeti } from "./ayristirici";
+import { egilimOzeti, grafikVerisi, gecmisleriGetir, FARK_ESIK_MV } from "./saglikGecmisi";
+import { cihazGecmisi } from "./servis";
 
 /**
  * Sohbet yanıtları — iki katman:
@@ -27,6 +29,7 @@ export const ORNEK_SORULAR = [
   "Şu an kaç cihaz arızalı?",
   "Garantisi yakında dolan cihazlar",
   "Onay bekleyen başvurular",
+  "Akülerin son 30 günlük sağlık gidişatı",
   "LiFePO4 hücre dengeleme nasıl çalışır?",
 ];
 
@@ -62,7 +65,10 @@ export async function soruSor(soru, gecmis = [], { gorsel } = {}) {
   if (!gorsel) {
     const veri = await sistemVerisi();
     const niyet = ureticiNiyeti(soru, veri);
-    if (niyet) return { metin: await yanitla(niyet, veri), kaynak: "yerel" };
+    if (niyet) {
+      const y = await yanitla(niyet, veri);
+      return typeof y === "string" ? { metin: y, kaynak: "yerel" } : { ...y, kaynak: "yerel" };
+    }
   }
 
   if (!UZAK_YOL) return { metin: anlamadim(), kaynak: "yerel" };
@@ -89,6 +95,15 @@ function anlamadim(neden) {
 }
 
 /* ═══════════ yerel yanıt motoru ═══════════ */
+
+function egilimSatiri(o) {
+  const yon = { kotulesiyor: "kötüleşiyor", iyilesiyor: "iyileşiyor", sabit: "sabit" }[o.yon];
+  let t = `· ${o.ilk} mV → ${o.son} mV (en yüksek ${o.enYuksek} mV); gidişat **${yon}**` +
+    (o.yon !== "sabit" ? ` (günde ${o.egim > 0 ? "+" : ""}${o.egim} mV)` : "") + ".";
+  if (o.esikUstu) t += `\n· Fark ${FARK_ESIK_MV} mV sınırının üstünde: hücre dengelemesi yetmiyor, servis değerlendirmesi önerilir.`;
+  else if (o.esigeGun != null) t += `\n· Bu hızla yaklaşık ${o.esigeGun} gün içinde ${FARK_ESIK_MV} mV sınırına ulaşır.`;
+  return t;
+}
 
 const musteriSatiri = (m, alan, cihazSayisi) => {
   const yer = [m.ilce, m.il].filter(Boolean).join("/") || "-";
@@ -159,6 +174,54 @@ async function yanitla(n, { cihazlar, musteriler, partiler, talepler, isler }) {
         if (kaynak?.sinif) t += `\nArıza kaynağı: ${KAYNAK_ADI[kaynak.sinif]} (%${Math.round((kaynak.guven || 0) * 100)} güven).`;
       } catch { /* kaynak analizi bu cihaz için mevcut değil */ }
       return t;
+    }
+
+    case "cihaz_gecmis": {
+      if (!n.kod.startsWith("AKU")) {
+        return `${n.kod} bir inverter; sağlık geçmişi hücre ölçümlerinden çıkarıldığı için akülerde var. ` +
+          `Üretim geçmişi için cihaz sayfasına bakın: ${n.kod}`;
+      }
+      let c = null;
+      try { c = await cihazBul(n.kod); } catch { /* aşağıda */ }
+      if (!c?.id) return `${n.kod} kayıtlarda bulunamadı.`;
+      const seri = await cihazGecmisi(n.kod, n.gun).catch(() => []);
+      const o = egilimOzeti(seri);
+      if (!o) return `${n.kod} için son ${n.gun} günde yeterli ölçüm yok (en az 2 gün gerekir).`;
+      return {
+        metin: `${n.kod} — son ${o.gun} günün hücre gerilim farkı (günlük ortanca):\n` +
+          egilimSatiri(o) + (c.saglik != null ? `\n· Şu anki sağlık skoru ${c.saglik}.` : "") +
+          (c.tahmin ? `\n· Öngörü: ${c.tahmin.bilesen} — ${sureMetni(c.tahmin.kalanSaat)} içinde.` : "") +
+          "\n\nSağlık skorunun kendisi geçmişte saklanmıyor; gidişat hücre farkından çıkarılır.",
+        grafik: grafikVerisi(seri, `${n.kod} · hücre farkı`),
+      };
+    }
+
+    case "saglik_gecmisi": {
+      const sahibi = new Set(n.musteriler.map((m) => m.id));
+      const akuler = cihazlar
+        .filter((c) => c.tip === "aku" && c.musteriId && (!sahibi.size || sahibi.has(c.musteriId)))
+        .sort((a, b) => (a.saglik ?? 100) - (b.saglik ?? 100))
+        .slice(0, 25);
+      const kimin = n.musteriler.length ? `${n.musteriler.map((m) => m.ad).join(", ")} — ` : "";
+      if (!akuler.length) return `${kimin}Sahada akü yok; sağlık geçmişi çıkarılamadı.`;
+      const sonuc = (await gecmisleriGetir(akuler, n.gun)).filter((x) => x.ozet);
+      if (!sonuc.length) return `${kimin}Son ${n.gun} günde akülerden yeterli ölçüm gelmemiş.`;
+      const kotu = sonuc.filter((x) => x.ozet.yon === "kotulesiyor" || x.ozet.esikUstu)
+        .sort((a, b) => (b.ozet.esikUstu - a.ozet.esikUstu) || (b.ozet.toplam - a.ozet.toplam));
+      const iyi = sonuc.filter((x) => x.ozet.yon === "iyilesiyor").length;
+      let t = `${kimin}Son ${n.gun} gün, ${sonuc.length} akü (hücre gerilim farkı, sınır ${FARK_ESIK_MV} mV):\n`;
+      t += `· ${sonuc.length - kotu.length - iyi} akü sabit, ${iyi} iyileşiyor, **${kotu.length} kötüleşiyor**.\n`;
+      if (kotu.length) {
+        t += "\nEn hızlı kötüleşenler:\n" + kotu.slice(0, 6).map(({ cihaz, ozet }) => {
+          const m = musteriBul(cihaz.musteriId);
+          return `· ${cihaz.id}${m ? ` (${m.ad})` : ""} — ${ozet.ilk} → ${ozet.son} mV` +
+            (ozet.esikUstu ? ", sınırın üstünde" : ozet.esigeGun != null ? `, bu hızla ~${ozet.esigeGun} günde sınıra ulaşır` : "") +
+            (cihaz.saglik != null ? `; sağlık ${cihaz.saglik}` : "");
+        }).join("\n");
+      } else t += "\nBelirgin kötüleşen akü yok.";
+      if (akuler.length === 25) t += "\n\n(En düşük sağlık skorlu 25 akü incelendi.)";
+      const enKotu = kotu[0] || sonuc[0];
+      return { metin: t, grafik: grafikVerisi(enKotu.seri, `${enKotu.cihaz.id} · hücre farkı`) };
     }
 
     case "parti": {

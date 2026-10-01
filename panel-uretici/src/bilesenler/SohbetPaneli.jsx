@@ -4,6 +4,8 @@ import { ArrowUp, Copy, Check, Sparkles, ImagePlus, X } from "lucide-react";
 import { useSohbet } from "../api/sohbetler";
 import { ORNEK_SORULAR } from "../api/asistan";
 import { fotografHazirla } from "../api/gorsel";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, Tooltip, ResponsiveContainer } from "recharts";
+import { useGrafikRenkleri, Ipucu } from "./Grafik";
 
 /**
  * Mesaj akışı + yazma alanı. Sohbet sayfasında ve sağ çekmecede kullanılır.
@@ -152,6 +154,7 @@ function Mesaj({ m }) {
   return (
     <div className="group">
       <div className="text-sm leading-relaxed text-metin"><Bicimli metin={m.metin} /></div>
+      {m.grafik?.noktalar?.length > 1 && <SohbetGrafigi g={m.grafik} />}
       {m.arama && <AramaOnerileri html={m.arama} />}
       <button onClick={kopyala}
         className="mt-1 flex items-center gap-1 rounded px-1 py-0.5 text-2xs text-sonuk opacity-0 transition-opacity
@@ -224,6 +227,40 @@ function KodBlogu({ metin }) {
       </button>
       <pre className="overflow-x-auto px-3 pb-2.5 pt-7 font-mono text-xs leading-relaxed text-metin">{metin}</pre>
     </div>
+  );
+}
+
+/** Yerel yanıtın küçük çizgi grafiği (ör. akü hücre farkı gidişatı, api/saglikGecmisi.js). */
+function SohbetGrafigi({ g }) {
+  const r = useGrafikRenkleri();
+  const tarih = (x) => String(x).slice(5).split("-").reverse().join(".");
+  const birim = g.birim ? ` ${g.birim}` : "";
+  return (
+    <figure className="mt-2 rounded-lg bg-panel2/60 px-2 pb-1 pt-2 ring-1 ring-cizgi" aria-label={g.baslik}>
+      <figcaption className="px-1 text-2xs text-sonuk">{g.baslik}{g.birim ? ` (${g.birim})` : ""}</figcaption>
+      <div className="h-[150px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={g.noktalar} margin={{ top: 8, right: 8, bottom: 0, left: g.sayisiz ? -36 : -18 }}>
+            <CartesianGrid stroke={r.izgara} vertical={false} />
+            <XAxis dataKey="x" tickFormatter={tarih} tick={{ fill: r.eksen, fontSize: 10 }}
+              axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={28} />
+            <YAxis tick={g.sayisiz ? false : { fill: r.eksen, fontSize: 10 }} axisLine={false} tickLine={false}
+              width={44} allowDecimals={false}
+              domain={[0, (en) => Math.ceil((Math.max(en, g.esik ?? 0) * 1.1) / 20) * 20]} />
+            {g.esik != null && (
+              <ReferenceLine y={g.esik} stroke={r.uyari} strokeDasharray="4 4" strokeOpacity={0.7}
+                label={{ value: g.sayisiz ? "sınır" : `sınır ${g.esik}${birim}`, position: "insideTopLeft", fill: r.soluk, fontSize: 10 }} />
+            )}
+            {!g.sayisiz && (
+              <Tooltip cursor={{ stroke: r.eksen, strokeDasharray: "3 3" }}
+                content={<Ipucu bicim={(v) => `${v}${birim}`} etiket={tarih} />} />
+            )}
+            <Line type="monotone" dataKey="y" name="Değer" stroke={r.seri} strokeWidth={2}
+              dot={false} activeDot={{ r: 3.5, strokeWidth: 2, stroke: r.yuzey }} isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </figure>
   );
 }
 

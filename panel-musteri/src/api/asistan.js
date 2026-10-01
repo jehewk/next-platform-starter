@@ -4,6 +4,7 @@ import { sistemimiGetir, olcumYasiDk, SESSIZ_DAKIKA } from "./sistem";
 import { garantiDurumu, onceMetni } from "../veri/yardimci";
 import { musteriDurumu, musteriMesaji, enerjiAkisi, paketGerilimi, enYuksekSicaklik, TALEP_DURUMU } from "../veri/sadeDil";
 import { musteriNiyeti } from "./ayristirici";
+import { gecmisleriGetir, grafikVerisi } from "./saglikGecmisi";
 
 /**
  * Müşteri sohbeti — iki katman:
@@ -26,6 +27,7 @@ export const ORNEK_SORULAR = [
   "Akümde ne kadar enerji var?",
   "Bugün ne kadar ürettim?",
   "Garantim ne zaman bitiyor?",
+  "Akümün sağlık geçmişi",
   "Destek talebim ne durumda?",
   "Akümün ömrünü nasıl uzatırım?",
 ];
@@ -48,8 +50,10 @@ export async function soruSor(soru, gecmis = [], { gorsel } = {}) {
   const niyet = gorsel ? null : musteriNiyeti(soru);
   if (niyet) {
     const { cihazlar } = await sistemimiGetir();
-    return { metin: await yanitla(niyet.niyet, cihazlar.filter((c) => ["aktif", "uyari", "arizali"].includes(c.durum))), kaynak: "yerel" };
+    const y = await yanitla(niyet.niyet, cihazlar.filter((c) => ["aktif", "uyari", "arizali"].includes(c.durum)), niyet);
+    return typeof y === "string" ? { metin: y, kaynak: "yerel" } : { ...y, kaynak: "yerel" };
   }
+
   if (!UZAK_YOL) return { metin: anlamadim(), kaynak: "yerel" };
   try {
     const c = await api.post(UZAK_YOL, {
@@ -74,7 +78,7 @@ function anlamadim(neden) {
 
 const ad = (c) => (c.tip === "aku" ? "Akü" : "İnverter");
 
-async function yanitla(niyet, cihazlar) {
+async function yanitla(niyet, cihazlar, ayrinti = {}) {
   const akuler = cihazlar.filter((c) => c.tip === "aku");
   const invler = cihazlar.filter((c) => c.tip === "inverter");
 
@@ -115,6 +119,36 @@ async function yanitla(niyet, cihazlar) {
       return t + ` (${c.id}).`;
     }));
     return satirlar.join("\n");
+  }
+
+  if (niyet === "saglik_gecmisi") {
+    if (!akuler.length) return "Hesabınızda akü görünmüyor; sağlık geçmişi akü ölçümlerinden çıkarılır.";
+    const gun = ayrinti.gun || 30;
+    const sonuc = await gecmisleriGetir(akuler, gun);
+    const satirlar = sonuc.map(({ cihaz, ozet }) => {
+      if (!ozet) return `${cihaz.id}: son ${gun} günde yeterli ölçüm yok.`;
+      if (ozet.esikUstu) {
+        return `${cihaz.id}: hücreler arasındaki denge bozulmuş. Destek sekmesinden bize bildirin; ` +
+          "ekibimiz verilerinizi inceleyip size ulaşsın.";
+      }
+      if (ozet.yon === "kotulesiyor") {
+        return `${cihaz.id}: son ${ozet.gun} günde hücreler arasındaki denge yavaş yavaş bozuluyor. ` +
+          (ozet.esigeGun != null && ozet.esigeGun < 60
+            ? "Henüz sınırda değil ama yakında servis kontrolü gerekebilir; Destek sekmesinden talep açabilirsiniz."
+            : "Şimdilik endişe yok; ekibimiz izliyor.");
+      }
+      return `${cihaz.id}: son ${ozet.gun} gün boyunca hücreler dengeli kaldı` +
+        (ozet.yon === "iyilesiyor" ? " ve denge daha da iyileşti." : ", belirgin bir değişiklik yok.") +
+        (cihaz.saglik != null && cihaz.saglik >= 85 ? " Aküleriniz sağlıklı." : "");
+    });
+    // Grafik en çok dikkat isteyen aküden: sınır üstü > kötüleşen > ilk
+    const grafikli = sonuc.find((x) => x.ozet?.esikUstu) || sonuc.find((x) => x.ozet?.yon === "kotulesiyor") ||
+      sonuc.find((x) => x.ozet);
+    return {
+      metin: satirlar.join("\n") +
+        "\n\nAkünün yaşlanması en önce hücreler arasındaki farkın büyümesiyle anlaşılır; grafikte bu farkın gidişatını görüyorsunuz (çizgi ne kadar aşağıdaysa o kadar iyi).",
+      ...(grafikli ? { grafik: grafikVerisi(grafikli.seri, `${grafikli.cihaz.id} · hücre dengesi`, { sayisiz: true }) } : {}),
+    };
   }
 
   if (niyet === "sarj") {

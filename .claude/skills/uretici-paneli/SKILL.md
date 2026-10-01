@@ -58,6 +58,10 @@ hata diğerinde de düzeltilmeli. Mimari ve yayın: kök `YAYIN.md`.
 - Sunucu: `aws/ekler/asistan/dennis_asistan.py` (Lambda katmanı). `ASISTAN_SAGLAYICI`:
   `gemini` (urllib, GEMINI_API_KEY), `bedrock` (boto3 Converse), `anthropic` (SDK katmanda).
   Ana Lambda'ya yalnızca yönlendirme (yamala.py, yama E). Günlük sınır `dennis-asistan-kota`.
+- Akü sağlık geçmişi: `api/saglikGecmisi.js` (iki uygulamada aynı) hücre farkı serisinden gidişat
+  çıkarır (eğim, sınıra kalan gün; sınır 80 mV). Niyetler: `saglik_gecmisi`, `cihaz_gecmis`
+  (seri no). `yanitla` dize ya da `{metin, grafik}` döndürebilir; `grafik` sohbette
+  `SohbetGrafigi` ile çizilir. Müşteri yanıtında mV/sayı yok (`sayisiz`).
 - Fotoğraf: `api/gorsel.js` küçültür; `soruSor(soru, gecmis, { gorsel })` ayrıştırıcıyı atlar,
   istek `gorsel: {tur, veri}` taşır. Geçmişte yalnızca önizleme (`m.gorsel`) saklanır.
 - Gemini web araması: yanıt `arama` (Google önerileri HTML'i) taşıyabilir; `AramaOnerileri`
