@@ -238,6 +238,9 @@ export async function sahteIstek(yol, govde = {}, token = "") {
         throw Object.assign(new Error("Bugünkü soru hakkınız doldu; yarın tekrar sorabilirsiniz."), { durum: 429 });
       }
       if (!["musteri", "uretici"].includes(govde.panel)) throw Object.assign(new Error("panel eksik"), { durum: 400 });
+      if (/kod yaz/i.test(govde.soru || "")) {
+        return { yanit: "İşte örnek:\n```python\ndef topla(a, b):\n    return a + b\n```\nBaşka dil istersen söyle." };
+      }
       const veriSizdi = (govde.gecmis || []).some((m) => /şarj %|adres:|tel:/.test(m.metin));
       return { yanit: `**Genel yanıt** (${govde.panel}, geçmiş ${govde.gecmis?.length ?? 0}${veriSizdi ? ", VERİ SIZDI" : ""}):\n` +
         `Bu genel bir sorudur.\n\nKaynaklar:\n- https://ornek.org/lfp-bakim` };

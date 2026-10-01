@@ -104,6 +104,15 @@ export function bilgiSorusuMu(c, { nasilDahil = false } = {}) {
   return !VERI.some((k) => (k.endsWith(" ") ? ` ${c.s} `.includes(` ${k}`) : k.includes(" ") ? c.s.includes(k) : c.w.some((x) => x.startsWith(k))));
 }
 
+// Sohbet etmek isteyen ya da konuyu reddeden ifade ("üretim değil de sohbet etmek istiyorum",
+// "yok bunları değil") veri sorusu değildir; dil modeline gider. "değil mi" soru ekidir, sayılmaz.
+const SOHBET = ["sohbet", "muhabbet", "laflay", "lafla", "konusal", "konusmak", "dertles", "chat"];
+export function sohbetIstegi(c) {
+  if (c.w.some((x) => SOHBET.some((k) => x.startsWith(k)))) return true;
+  if (c.w.some((x) => /^istemiyo/.test(x))) return true;
+  return c.w.some((x, i) => /^degil(de|im|sin|iz)?$/.test(x) && !/^mi/.test(c.w[i + 1] || ""));
+}
+
 /* ── üretici paneli ──────────────────────────────────────────────────── */
 
 const K = {
@@ -155,6 +164,7 @@ export function ureticiNiyeti(soru, { musteriler = [] } = {}) {
   // Müşteri adı en güçlü veri işaretidir ("Ahmet'e nasıl ulaşırım" de bir veri sorusudur)
   const adlar = adiGecenler(c, musteriler);
   if (adlar.length) return { niyet: "musteri_bilgi", musteriler: adlar, alan };
+  if (sohbetIstegi(c)) return null;
   const zaman = zamanAraligi(c);
   const musteriKonusu = c.var(K.musteri);
   // Müşteri/iletişim/kayıt geçen soru panelde her zaman veri sorusudur ("adres bilgisi nedir")
@@ -199,7 +209,7 @@ const kendiMi = (c) => c.w.some((x) => ["benim", "bizim", "evdeki", "evimdeki"].
 /** Müşteri uygulaması niyeti; döner: {niyet} ya da null (dil modeline). */
 export function musteriNiyeti(soru) {
   const c = soruCoz(soru);
-  if (bilgiSorusuMu(c)) return null;                       // "akümün ömrünü nasıl uzatırım" → tavsiye
+  if (sohbetIstegi(c) || bilgiSorusuMu(c)) return null;                       // "akümün ömrünü nasıl uzatırım" → tavsiye
   const veriIstiyor = kendiMi(c) || VERI.some((k) => c.w.some((x) => x.startsWith(k.trim())));
   if (c.var(M.talep) && (veriIstiyor || c.w.length <= 4)) return { niyet: "talep" };
   if (c.var(M.garanti) && (veriIstiyor || c.w.length <= 4)) return { niyet: "garanti" };

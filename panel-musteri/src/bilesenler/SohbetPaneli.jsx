@@ -126,13 +126,20 @@ function Mesaj({ m }) {
 
 const SERI = /\b((?:AKU|INV)-D\d{2}-\d{4})\b/g;
 
-/** Satır başı "· " / "- " listeye dönüşür, seri numaraları cihaz sayfasına bağlanır. */
+/** Satır başı "· " / "- " / "* " listeye, ``` arası kod bloğuna dönüşür; seri numaraları cihaz sayfasına bağlanır. */
 function Bicimli({ metin }) {
   const satirlar = metin.split("\n");
   const bloklar = [];
   let liste = null;
+  let kod = null;
   satirlar.forEach((s, i) => {
-    const madde = s.match(/^\s*[·\-•]\s+(.*)$/);
+    if (/^\s*```/.test(s)) {
+      if (kod) kod = null;
+      else { kod = []; liste = null; bloklar.push({ tur: "kod", satirlar: kod }); }
+      return;
+    }
+    if (kod) { kod.push(s); return; }
+    const madde = s.match(/^\s*[·\-•*]\s+(.*)$/);
     if (madde) {
       if (!liste) { liste = []; bloklar.push({ tur: "liste", ogeler: liste }); }
       liste.push(madde[1]);
@@ -150,10 +157,33 @@ function Bicimli({ metin }) {
           <ul key={i} className="my-1 space-y-1 pl-4">
             {b.ogeler.map((o, j) => <li key={j} className="list-disc marker:text-sonuk"><Baglantili metin={o} /></li>)}
           </ul>
+        ) : b.tur === "kod" ? (
+          <KodBlogu key={i} metin={b.satirlar.join("\n")} />
         ) : b.tur === "p" ? (
           <p key={i}><Baglantili metin={b.metin} /></p>
         ) : <div key={i} className="h-1.5" />
       )}
+    </div>
+  );
+}
+
+function KodBlogu({ metin }) {
+  const [kopyalandi, setKopyalandi] = useState(false);
+  async function kopyala() {
+    try {
+      await navigator.clipboard.writeText(metin);
+      setKopyalandi(true);
+      setTimeout(() => setKopyalandi(false), 1500);
+    } catch { /* izin yok */ }
+  }
+  return (
+    <div className="relative my-1.5 rounded-lg bg-panel2 ring-1 ring-cizgi">
+      <button onClick={kopyala} aria-label="Kodu kopyala"
+        className="absolute right-1.5 top-1.5 flex items-center gap-1 rounded px-1.5 py-1 text-2xs text-sonuk hover:text-metin">
+        {kopyalandi ? <Check size={12} /> : <Copy size={12} />}
+        {kopyalandi ? "Kopyalandı" : "Kopyala"}
+      </button>
+      <pre className="overflow-x-auto px-3 pb-2.5 pt-7 font-mono text-xs leading-relaxed text-metin">{metin}</pre>
     </div>
   );
 }

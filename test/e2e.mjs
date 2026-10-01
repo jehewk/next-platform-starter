@@ -141,6 +141,10 @@ try {
     await sor("selam naber");
     kontrol(`${on}: veri yanıtları dil modeline gitmedi`, await s.getByText("(uretici, geçmiş 2)").first().isVisible()
       && !(await s.getByText("VERİ SIZDI").count()));
+    await sor("ya üretim değilde sohbet etmek istiyorum");
+    kontrol(`${on}: "üretim değil de sohbet" dil modeline gitti`, await s.getByText("(uretici, geçmiş 4)").first().isVisible());
+    await sor("bana hesap makinesi için kod yaz");
+    kontrol(`${on}: kod bloğu gösterildi`, (await s.locator("pre").last().innerText()).includes("def topla(a, b):\n    return a + b"));
     await tasmaYok(s, `${on} asistan`);
     await s.goto(U + "/aku/AKU-D24-0071"); await bekle(s, 1400);
     kontrol(`${on}: akü detayında NaN/undefined yok`, !/NaN|undefined/.test(await s.locator("main").innerText()));
