@@ -23,7 +23,7 @@ param(
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\ortak.ps1"
 
-$Eposta = $Eposta.Trim().ToLower()
+$Eposta = $Eposta.Trim().ToLowerInvariant()
 if ($Eposta -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') { throw "Geçersiz e-posta: $Eposta" }
 if (-not $Sifre) { $Sifre = Read-Host "  $Eposta için şifre (en az 8 karakter; büyük/küçük harf ve rakam)" -AsSecureString }
 $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Sifre)

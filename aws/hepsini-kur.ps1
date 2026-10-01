@@ -71,7 +71,7 @@ $UYGULAMALAR = @(
 )
 foreach ($u in $UYGULAMALAR) {
   if ($u.Alan) {
-    $u.Alan = $u.Alan.Trim().ToLower() -replace '^https?://', '' -replace '/.*$', ''
+    $u.Alan = $u.Alan.Trim().ToLowerInvariant() -replace '^https?://', '' -replace '/.*$', ''
     if ($u.Alan -notmatch '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' -or $u.Alan.Length -gt 63) {
       throw "Geçersiz alan adı: $($u.Alan) (ör. app.dennisenerji.com; S3 kova adı en fazla 63 karakter)"
     }

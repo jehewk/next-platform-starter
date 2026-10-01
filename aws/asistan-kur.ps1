@@ -81,7 +81,7 @@ function AnahtarAyikla([string]$a, [string]$desen) {
   $m = [regex]::Match($a, $desen)
   if ($m.Success) { return $m.Value }
   $t = AnahtarTemizle $a
-  if ($t -match '^[A-Za-z0-9_.\-]{30,200}$') { return $t }
+  if ($t -cmatch '^[A-Za-z0-9_.\-]{30,200}$') { return $t }
   return ""
 }
 
@@ -96,17 +96,17 @@ function AnahtarOku([string]$onEk, [string]$ortamAdi) {
     $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($guvenli)
     try { $a = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
     finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
-    if ((AnahtarTemizle $a) -notmatch "^$onEk") {
+    if ((AnahtarTemizle $a) -cnotmatch "^$onEk") {
       $pano = $null
       try { $pano = (Get-Clipboard -Raw -ErrorAction Stop) } catch { }
-      if ((AnahtarTemizle $pano) -match "^$onEk") {
+      if ((AnahtarTemizle $pano) -cmatch "^$onEk") {
         $a = $pano; Bilgi "anahtar panodan okundu"
         try { Set-Clipboard -Value " " } catch { }   # anahtar panoda kalmasın
       }
     }
   }
   $a = AnahtarTemizle $a
-  if ($a -notmatch "^$onEk") {
+  if ($a -cnotmatch "^$onEk") {
     $ipucu = if (-not $a) { "hiçbir şey alınmadı" } else { "$($a.Length) karakter alındı, başı '$onEk' değil" }
     throw "Anahtar okunamadı ($ipucu). Anahtarı kopyalayıp (Ctrl+C) betiği yeniden çalıştırın ve soruda yalnızca Enter'a basın."
   }
@@ -139,13 +139,13 @@ function GeminiAnahtariOku {
     $tarif = if (-not $t) { "hiçbir şey gelmedi (pano da boş)" }
       elseif ($t -match '^https?://') { "bir web adresi geldi ($($t.Length) karakter) — sayfa adresi kopyalanmış, anahtar değil" }
       elseif ($t -match '\s') { "boşluklu bir metin geldi ($($t.Length) karakter, $(@($t -split '\s+').Count) kelime) — anahtar değil" }
-      else { "$($t.Length) karakter geldi; içinde anahtarda olmayan işaretler var: $((@($t.ToCharArray() | Where-Object { $_ -notmatch '[A-Za-z0-9_.\-]' } | Select-Object -Unique) -join ' '))" }
+      else { "$($t.Length) karakter geldi; içinde anahtarda olmayan işaretler var: $((@($t.ToCharArray() | Where-Object { "$_" -cnotmatch '[A-Za-z0-9_.\-]' } | Select-Object -Unique) -join ' '))" }
     Uyari "Okunan: $tarif"
     Uyari "Kesin yol: PowerShell'de önce şunu yazın (tırnaklar arasına anahtarı yapıştırın), sonra betiği çalıştırın:"
     Uyari '   $env:GEMINI_API_KEY = "AIza...buraya yapıştırın..."'
     throw "Anahtar okunamadı."
   }
-  if ($a -notmatch '^AIza') { Bilgi "anahtar alışılmış biçimde değil ($($a.Length) karakter); Google'a sorularak doğrulanacak" }
+  if ($a -cnotmatch '^AIza') { Bilgi "anahtar alışılmış biçimde değil ($($a.Length) karakter); Google'a sorularak doğrulanacak" }
   return $a
 }
 
@@ -294,10 +294,10 @@ if ($Saglayici -eq "bedrock") {
     $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($guvenli)
     try { $yeniAnahtar = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
     finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
-    if ((AnahtarTemizle $yeniAnahtar) -notmatch '^sk-ant-') {
+    if ((AnahtarTemizle $yeniAnahtar) -cnotmatch '^sk-ant-') {
       $pano = $null
       try { $pano = (Get-Clipboard -Raw -ErrorAction Stop) } catch { }
-      if ((AnahtarTemizle $pano) -match '^sk-ant-') {
+      if ((AnahtarTemizle $pano) -cmatch '^sk-ant-') {
         $yeniAnahtar = $pano
         Bilgi "anahtar panodan okundu"
         try { Set-Clipboard -Value " " } catch { }   # anahtar panoda kalmasın
@@ -305,13 +305,13 @@ if ($Saglayici -eq "bedrock") {
     }
   }
   $yeniAnahtar = AnahtarTemizle $yeniAnahtar
-  if ($yeniAnahtar -match '\.\.\.|…' -or ($yeniAnahtar -match '^sk-ant-' -and $yeniAnahtar.Length -lt 60)) {
+  if ($yeniAnahtar -match '\.\.\.|…' -or ($yeniAnahtar -cmatch '^sk-ant-' -and $yeniAnahtar.Length -lt 60)) {
     # Konsol listede anahtarın yalnızca kısaltmasını gösterir (sk-ant-api03-ab...wxyz)
     throw ("Bu, anahtarın konsoldaki KISALTILMIŞ görünümü ($($yeniAnahtar.Length) karakter; gerçek anahtar ~100 karakter). " +
            "Tam anahtar yalnızca oluşturulduğu anda bir kez gösterilir: console.anthropic.com > API Keys > Create Key, " +
            "çıkan pencerede Copy'ye basın ve betiği yeniden çalıştırın.")
   }
-  if ($yeniAnahtar -notmatch '^sk-ant-') {
+  if ($yeniAnahtar -cnotmatch '^sk-ant-') {
     # Anahtarın kendisi gösterilmez; yalnızca teşhis için uzunluk ve ilk karakter türü
     $ipucu = if (-not $yeniAnahtar) { "hiçbir şey alınmadı" } else { "$($yeniAnahtar.Length) karakter alındı, başı 'sk-ant-' değil" }
     throw "Anahtar okunamadı ($ipucu). Anahtarı kopyalayıp (Ctrl+C) betiği yeniden çalıştırın ve soruda yalnızca Enter'a basın."
@@ -375,7 +375,7 @@ else {
 
 # ── 3) Lambda katmanı ─────────────────────────────────────────────────────
 Adim "3/6 Lambda katmanı ($KATMAN)"
-$ozet = (Get-FileHash $MODUL -Algorithm SHA256).Hash.Substring(0, 12).ToLower()
+$ozet = (Get-FileHash $MODUL -Algorithm SHA256).Hash.Substring(0, 12).ToLowerInvariant()
 $imza = if ($Saglayici -eq "anthropic") { "sdk=$SDK_SURUMU modul=$ozet py=$pySurum $mimari" } else { "bedrock modul=$ozet" }
 $katmanArn = $null
 $son = @((Dene lambda list-layer-versions --layer-name $KATMAN).LayerVersions) | Select-Object -First 1
