@@ -172,6 +172,12 @@ if ($Saglayici -eq "bedrock") {
     }
   }
   $yeniAnahtar = AnahtarTemizle $yeniAnahtar
+  if ($yeniAnahtar -match '\.\.\.|…' -or ($yeniAnahtar -match '^sk-ant-' -and $yeniAnahtar.Length -lt 60)) {
+    # Konsol listede anahtarın yalnızca kısaltmasını gösterir (sk-ant-api03-ab...wxyz)
+    throw ("Bu, anahtarın konsoldaki KISALTILMIŞ görünümü ($($yeniAnahtar.Length) karakter; gerçek anahtar ~100 karakter). " +
+           "Tam anahtar yalnızca oluşturulduğu anda bir kez gösterilir: console.anthropic.com > API Keys > Create Key, " +
+           "çıkan pencerede Copy'ye basın ve betiği yeniden çalıştırın.")
+  }
   if ($yeniAnahtar -notmatch '^sk-ant-') {
     # Anahtarın kendisi gösterilmez; yalnızca teşhis için uzunluk ve ilk karakter türü
     $ipucu = if (-not $yeniAnahtar) { "hiçbir şey alınmadı" } else { "$($yeniAnahtar.Length) karakter alındı, başı 'sk-ant-' değil" }
