@@ -73,6 +73,18 @@ function AnahtarTemizle([string]$a) {
   return (($a -replace '[\x00-\x20\x7F\uFEFF\u200B]', '') -replace '^["'']+|["'']+$', '')
 }
 
+# Metnin içinden anahtarı çıkarır: "GEMINI_API_KEY=AIza…", tırnak, etiket vb. atılır.
+# $desen eşleşmezse ve metin tek parça, makul uzunlukta ise olduğu gibi kabul edilir
+# (yeni anahtar biçimleri) — geçerliliğine sağlayıcının API'si karar verir.
+function AnahtarAyikla([string]$a, [string]$desen) {
+  if (-not $a) { return "" }
+  $m = [regex]::Match($a, $desen)
+  if ($m.Success) { return $m.Value }
+  $t = AnahtarTemizle $a
+  if ($t -match '^[A-Za-z0-9_.\-]{30,200}$') { return $t }
+  return ""
+}
+
 # Gizli girişten ya da (Ctrl+V yapışmazsa) panodan anahtar okur; $onEk ile başlamalı.
 function AnahtarOku([string]$onEk, [string]$ortamAdi) {
   $a = $null
@@ -98,6 +110,32 @@ function AnahtarOku([string]$onEk, [string]$ortamAdi) {
     $ipucu = if (-not $a) { "hiçbir şey alınmadı" } else { "$($a.Length) karakter alındı, başı '$onEk' değil" }
     throw "Anahtar okunamadı ($ipucu). Anahtarı kopyalayıp (Ctrl+C) betiği yeniden çalıştırın ve soruda yalnızca Enter'a basın."
   }
+  return $a
+}
+
+# Gemini anahtarı: klasik biçim AIza + 35 karakter; metnin içinden ayıklanır.
+function GeminiAnahtariOku {
+  $desen = 'AIza[0-9A-Za-z_\-]{35}'
+  if ($env:GEMINI_API_KEY) { Bilgi "bu bilgisayardaki GEMINI_API_KEY kullanılıyor"; $a = AnahtarAyikla $env:GEMINI_API_KEY $desen }
+  else {
+    Bilgi "Anahtarı KOPYALAYIN (Ctrl+C), sonra burada yalnızca Enter'a basın (sağ tıkla yapıştırmak da olur)."
+    $guvenli = Read-Host "  API anahtarı (ekranda görünmez)" -AsSecureString
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($guvenli)
+    try { $girilen = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+    $a = AnahtarAyikla $girilen $desen
+    if (-not $a) {
+      $pano = $null
+      try { $pano = (Get-Clipboard -Raw -ErrorAction Stop) } catch { }
+      $a = AnahtarAyikla $pano $desen
+      if ($a) { Bilgi "anahtar panodan okundu"; try { Set-Clipboard -Value " " } catch { } }
+    }
+  }
+  if (-not $a) {
+    throw ("Anahtar okunamadı. aistudio.google.com > Get API key sayfasında anahtarın yanındaki kopyala " +
+           "düğmesine basın, betiği yeniden çalıştırıp soruda yalnızca Enter'a basın.")
+  }
+  if ($a -notmatch '^AIza') { Bilgi "anahtar alışılmış biçimde değil ($($a.Length) karakter); Google'a sorularak doğrulanacak" }
   return $a
 }
 
@@ -195,7 +233,7 @@ if ($Saglayici -eq "bedrock") {
   $gAnahtar = $geminiMevcut
   if (-not $gAnahtar -or $AnahtarYenile) {
     Bilgi "aistudio.google.com > Get API key > Create API key (Google hesabı yeter, kart istemez; AIza ile başlar)."
-    $gAnahtar = AnahtarOku "AIza" "GEMINI_API_KEY"
+    $gAnahtar = GeminiAnahtariOku
     $yeniGemini = $gAnahtar
   } else { Tamam "anahtar Lambda'da tanımlı (değer gösterilmez)" }
   $baslik = @{ "x-goog-api-key" = $gAnahtar }
