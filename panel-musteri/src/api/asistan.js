@@ -3,16 +3,20 @@ import { garantiListesi, uretimGecmisiGetir } from "./servis";
 import { sistemimiGetir, olcumYasiDk, SESSIZ_DAKIKA } from "./sistem";
 import { garantiDurumu, onceMetni } from "../veri/yardimci";
 import { musteriDurumu, musteriMesaji, enerjiAkisi, paketGerilimi, enYuksekSicaklik, TALEP_DURUMU } from "../veri/sadeDil";
+import { musteriNiyeti } from "./ayristirici";
 
 /**
- * Müşteri sohbeti.
+ * Müşteri sohbeti — iki katman:
  *
- * VITE_ASISTAN_YOLU tanımlıysa soru sunucuya gider (dil modeli; anahtar
- * sunucuda — aws/asistan-kur.ps1). Her konuda soru sorulabilir; müşterinin
- * kendi sisteminin kısa özeti (baglam) de gönderilir, böylece sistem
- * soruları da yanıtlanır. Yoksa ya da çağrı başarısız olursa, müşterinin KENDİ
- * cihazlarının son ölçümleriyle çalışan yerel motor sade dilde yanıtlar.
- * Teknik gerekçe (hücre no, mV) müşteriye gösterilmez — sadeDil.js.
+ *  1) Ayrıştırıcı (ayristirici.js): "akümde ne kadar enerji var", "bugün ne kadar
+ *     ürettim" gibi kendi sistemiyle ilgili sorular serbest Türkçeyle sorulsa da tanınır;
+ *     yanıt müşterinin KENDİ cihazlarının son ölçümlerinden, sade dille üretilir.
+ *     Veri tarayıcıdan dışarı çıkmaz. Teknik gerekçe (hücre no, mV) gösterilmez — sadeDil.js.
+ *  2) Dil modeli (VITE_ASISTAN_YOLU → POST /de/asistan; aws/asistan-kur.ps1): genel
+ *     sorular ("selam", "akü kışın nasıl korunur"). Yalnızca SORU METNİ gider; veriden
+ *     üretilmiş önceki yanıtlar konuşma geçmişinden de çıkarılır.
+ *
+ * soruSor {metin, kaynak: "yerel" | "model"} döndürür.
  */
 
 const UZAK_YOL = import.meta.env.VITE_ASISTAN_YOLU;
@@ -26,71 +30,50 @@ export const ORNEK_SORULAR = [
   "Akümün ömrünü nasıl uzatırım?",
 ];
 
-export async function soruSor(soru, gecmis = []) {
-  let uzakHata = null;
-  if (UZAK_YOL) {
-    try {
-      const baglam = await baglamOlustur().catch(() => "");
-      const c = await api.post(UZAK_YOL, { soru, gecmis: gecmis.slice(-12), baglam, panel: "musteri" });
-      if (c?.yanit) return c.yanit;
-      uzakHata = "boş yanıt";
-    } catch (e) {
-      // Günlük sınır ya da zaman aşımı: sunucunun mesajı gösterilir. Diğer
-      // hatalarda yerel motor yanıtlar ve nedeni yanıtın altına yazılır.
-      if (e?.durum === 429 || e?.durum === 504) return e.message;
-      uzakHata = `${e?.message || "bağlantı hatası"}${e?.durum ? ` (${e.durum})` : ""}`;
-    }
+/** Dil modeline giden geçmiş: veriden üretilen yanıtlar ve onları doğuran sorular çıkarılır. */
+function modelGecmisi(gecmis) {
+  const sonuc = [];
+  for (let i = 0; i < gecmis.length; i++) {
+    const m = gecmis[i];
+    if (m.rol === "kullanici" && gecmis[i + 1]?.kaynak === "yerel") { i++; continue; }
+    if (m.rol === "asistan" && m.kaynak !== "model") continue;
+    sonuc.push({ rol: m.rol, metin: m.metin });
   }
-  const { cihazlar } = await sistemimiGetir();
-  const yerel = await yanitla(soru, cihazlar.filter((c) => ["aktif", "uyari", "arizali"].includes(c.durum)));
-  return uzakHata ? `${yerel}\n\n(Asistana şu an ulaşılamadı: ${uzakHata}. Bu yanıt cihaz verinizden hazırlandı.)` : yerel;
+  return sonuc.slice(-12);
+}
+
+export async function soruSor(soru, gecmis = []) {
+  const niyet = musteriNiyeti(soru);
+  if (niyet) {
+    const { cihazlar } = await sistemimiGetir();
+    return { metin: await yanitla(niyet.niyet, cihazlar.filter((c) => ["aktif", "uyari", "arizali"].includes(c.durum))), kaynak: "yerel" };
+  }
+  if (!UZAK_YOL) return { metin: anlamadim(), kaynak: "yerel" };
+  try {
+    const c = await api.post(UZAK_YOL, { soru, gecmis: modelGecmisi(gecmis), panel: "musteri" });
+    if (c?.yanit) return { metin: c.yanit, kaynak: "model" };
+    return { metin: anlamadim("boş yanıt"), kaynak: "yerel" };
+  } catch (e) {
+    // Günlük sınır / zaman aşımı: sunucunun mesajı. Diğer hatalar: yardım + neden.
+    if (e?.durum === 429 || e?.durum === 504) return { metin: e.message, kaynak: "yerel" };
+    return { metin: anlamadim(`${e?.message || "bağlantı hatası"}${e?.durum ? ` (${e.durum})` : ""}`), kaynak: "yerel" };
+  }
+}
+
+function anlamadim(neden) {
+  return "Bu soruyu şu an yanıtlayamıyorum. Sisteminizle ilgili şunları sorabilirsiniz:\n" +
+    "· Sistemim nasıl?\n· Akümde ne kadar enerji var?\n· Bugün ne kadar ürettim?\n" +
+    "· Garantim ne zaman bitiyor?\n· Destek talebim ne durumda?" +
+    (neden ? `\n\n(Genel sorular için asistana ulaşılamadı: ${neden}.)` : "");
 }
 
 const ad = (c) => (c.tip === "aku" ? "Akü" : "İnverter");
 
-/** Dil modeline giden kısa özet: yalnızca bu müşterinin kendi cihazları ve talepleri. */
-async function baglamOlustur() {
-  const { cihazlar } = await sistemimiGetir();
-  const satirlar = [`Tarih: ${new Date().toLocaleString("tr-TR")}`];
-  if (!cihazlar.length) return satirlar.concat("Müşterinin hesabında henüz kurulu cihaz yok.").join("\n");
-  satirlar.push(`Cihazlar (${cihazlar.length}):`);
-  for (const c of cihazlar.slice(0, 20)) {
-    const o = c.sonOlcum || {};
-    const p = [`${ad(c)} ${c.id}`];
-    const ekle = (f) => { try { const v = f(); if (v) p.push(v); } catch { /* eksik alan */ } };
-    ekle(() => c.model && `model ${c.model}`);
-    ekle(() => c.durum && `durum ${c.durum}`);
-    ekle(() => c.saglik != null && `sağlık ${Math.round(c.saglik)}/100`);
-    ekle(() => o.soc != null && `şarj %${Math.round(Number(o.soc))}`);
-    ekle(() => c.kapasiteAh && `kapasite ${c.kapasiteAh} Ah`);
-    ekle(() => { const a = enerjiAkisi(paketGerilimi(o), Number(o.akim)); return a && `${a.metin}${a.kw != null ? ` ${a.kw.toFixed(1)} kW` : ""}`; });
-    ekle(() => { const t = enYuksekSicaklik(o); return t != null && `sıcaklık ${t} °C`; });
-    ekle(() => { const k = o.gunluk_kwh ?? c.gunlukKwh; return k != null && `bugünkü üretim ${Number(k).toFixed(1)} kWh`; });
-    ekle(() => o.zaman && `son ölçüm ${onceMetni(o.zaman)}`);
-    ekle(() => { const g = garantiDurumu(c); return g.bitis && `garanti ${g.bitis.toLocaleDateString("tr-TR")}${g.gecerli ? "'e kadar" : " tarihinde doldu"}`; });
-    ekle(() => c.tahmin && `uyarı: ${musteriMesaji(c.tahmin, c.saglik).baslik}`);
-    satirlar.push("- " + p.join("; "));
-  }
-  const talepler = await garantiListesi().catch(() => []);
-  if (talepler.length) {
-    satirlar.push("Destek talepleri:");
-    talepler.slice(0, 5).forEach((t) => satirlar.push(`- ${t.cihazId}: ${TALEP_DURUMU[t.durum]?.ad || t.durum}${t.aciklama ? ` — ${String(t.aciklama).slice(0, 120)}` : ""}`));
-  }
-  return satirlar.join("\n");
-}
-
-async function yanitla(soru, cihazlar) {
-  const s = soru.toLocaleLowerCase("tr");
-  const gecer = (...k) => k.some((x) => s.includes(x));
+async function yanitla(niyet, cihazlar) {
   const akuler = cihazlar.filter((c) => c.tip === "aku");
   const invler = cihazlar.filter((c) => c.tip === "inverter");
 
-  if (!cihazlar.length) {
-    return "Hesabınızda henüz kurulu cihaz görünmüyor. Kurulum ekibimiz cihazınızı eşleştirdiğinde " +
-      "durumunu buradan sorabilirsiniz.";
-  }
-
-  if (gecer("destek", "talep", "servis", "başvuru", "basvuru", "şikayet")) {
+  if (niyet === "talep") {
     const talepler = await garantiListesi().catch(() => []);
     if (!talepler.length) {
       return "Açık bir destek talebiniz yok. Bir sorun yaşıyorsanız Destek sekmesinden " +
@@ -100,7 +83,12 @@ async function yanitla(soru, cihazlar) {
       `· ${t.cihazId} — ${TALEP_DURUMU[t.durum]?.ad || t.durum}${t.aciklama ? ` („${t.aciklama}")` : ""}`).join("\n");
   }
 
-  if (gecer("garanti")) {
+  if (!cihazlar.length) {
+    return "Hesabınızda henüz kurulu cihaz görünmüyor. Kurulum ekibimiz cihazınızı eşleştirdiğinde " +
+      "durumunu buradan sorabilirsiniz.";
+  }
+
+  if (niyet === "garanti") {
     return "Garanti süreleriniz:\n" + cihazlar.map((c) => {
       const g = garantiDurumu(c);
       if (!g.bitis) return `· ${ad(c)} ${c.id} — bilgi yok`;
@@ -111,7 +99,7 @@ async function yanitla(soru, cihazlar) {
     }).join("\n") + "\n\nGaranti süresi üretim tarihinden itibaren başlar.";
   }
 
-  if (gecer("üret", "uret", "güneş", "gunes", "kwh", "panel")) {
+  if (niyet === "uretim") {
     if (!invler.length) return "Hesabınızda inverter görünmüyor; üretim bilgisi inverter üzerinden gelir.";
     const satirlar = await Promise.all(invler.map(async (c) => {
       const bugun = c.sonOlcum?.gunluk_kwh ?? c.gunlukKwh;
@@ -124,7 +112,7 @@ async function yanitla(soru, cihazlar) {
     return satirlar.join("\n");
   }
 
-  if (gecer("akü", "aku", "şarj", "sarj", "batarya", "enerji var", "kalan")) {
+  if (niyet === "sarj") {
     if (!akuler.length) return "Hesabınızda akü görünmüyor.";
     return akuler.map((c) => {
       const o = c.sonOlcum;
@@ -137,7 +125,7 @@ async function yanitla(soru, cihazlar) {
     }).join("\n");
   }
 
-  if (gecer("sıcak", "sicak", "ısı", "isi")) {
+  if (niyet === "sicaklik") {
     return akuler.map((c) => {
       const t = enYuksekSicaklik(c.sonOlcum);
       if (t == null) return `${c.id}: sıcaklık bilgisi yok.`;
@@ -146,7 +134,14 @@ async function yanitla(soru, cihazlar) {
     }).join("\n") || "Sıcaklık bilgisi akü üzerinden gelir; hesabınızda akü görünmüyor.";
   }
 
-  // Varsayılan: genel durum (merhaba, nasıl, durum, sorun var mı…)
+  if (niyet === "cihazlar") {
+    return `${cihazlar.length} cihazınız izleniyor:\n` + cihazlar.map((c) => {
+      const d = musteriDurumu(c.saglik ?? null);
+      return `· ${ad(c)} ${c.id}${c.model ? ` (${c.model})` : ""} — ${d.ad}`;
+    }).join("\n");
+  }
+
+  // durum: genel durum (sistemim nasıl, sorun var mı…)
   const olculen = cihazlar.filter((c) => c.saglik != null);
   const enKotu = olculen.length ? olculen.reduce((a, b) => (b.saglik < a.saglik ? b : a)) : null;
   const d = musteriDurumu(enKotu?.saglik ?? null);
@@ -158,8 +153,5 @@ async function yanitla(soru, cihazlar) {
   }
   const sessiz = cihazlar.filter((c) => (olcumYasiDk(c) ?? 0) >= SESSIZ_DAKIKA);
   if (sessiz.length) t += `\n\n${sessiz.map((c) => c.id).join(", ")} bir süredir veri göndermiyor; Wi-Fi bağlantısını kontrol edin.`;
-  if (!gecer("durum", "nasıl", "nasil", "sorun", "merhaba", "selam", "genel")) {
-    t += "\n\nŞunları da sorabilirsiniz: akü şarjı, bugünkü üretim, garanti süresi, destek talepleri.";
-  }
   return t;
 }

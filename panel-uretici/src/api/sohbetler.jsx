@@ -47,13 +47,16 @@ export function SohbetSaglayici({ children }) {
       mesajlar: [...s.mesajlar, { rol: "kullanici", metin: soru, zaman: Date.now() }],
     }));
     setBekleyen(id);
+    // soruSor {metin, kaynak} döndürür; kaynak ("yerel" | "model") dil modeline giden
+    // geçmişten veri yanıtlarını ayıklamak için saklanır.
     let yanit;
     try {
       yanit = await soruSor(soru, gecmis);
     } catch (e) {
-      yanit = `Yanıt oluşturulamadı: ${e.message}`;
+      yanit = { metin: `Yanıt oluşturulamadı: ${e.message}`, kaynak: "yerel" };
     }
-    sohbetGuncelle(id, (s) => ({ ...s, mesajlar: [...s.mesajlar, { rol: "asistan", metin: yanit, zaman: Date.now() }] }));
+    if (typeof yanit === "string") yanit = { metin: yanit, kaynak: "yerel" };
+    sohbetGuncelle(id, (s) => ({ ...s, mesajlar: [...s.mesajlar, { rol: "asistan", metin: yanit.metin, kaynak: yanit.kaynak, zaman: Date.now() }] }));
     setBekleyen(null);
   }, [aktif, bekleyen]);
 

@@ -132,11 +132,15 @@ try {
     await s.goto(U + "/asistan"); await bekle(s);
     await s.getByRole("button", { name: "LiFePO4 hücre dengeleme nasıl çalışır?" }).first().click();
     await bekle(s, 1500);
-    kontrol(`${on}: üretici asistanı sunucudan yanıtladı`, await s.getByText("(uretici, geçmiş 0)").first().isVisible());
-    await s.getByRole("textbox").last().fill("Müşterilerin adres bilgisi nedir?");
-    await s.keyboard.press("Enter");
-    await bekle(s, 1500);
-    kontrol(`${on}: müşteri sorusunda adresler özete giriyor`, await s.getByText(/adres: .+; tel:/).first().isVisible());
+    kontrol(`${on}: genel soru dil modeline gitti`, await s.getByText("(uretici, geçmiş 0)").first().isVisible());
+    const sor = async (metin) => { await s.getByRole("textbox").last().fill(metin); await s.keyboard.press("Enter"); await bekle(s, 1500); };
+    await sor("Müşterilerin adres bilgisi nedir?");
+    kontrol(`${on}: müşteri adresleri yerelde yanıtlandı`, await s.getByText(/\d+ müşteri:/).first().isVisible());
+    await sor("dostum bana bugün kayıt olan kullanıcıların bilgisini ver");
+    kontrol(`${on}: bugün kayıt olanlar listelendi`, await s.getByText(/Bugün kayıt olan \d+ müşteri/).first().isVisible());
+    await sor("selam naber");
+    kontrol(`${on}: veri yanıtları dil modeline gitmedi`, await s.getByText("(uretici, geçmiş 2)").first().isVisible()
+      && !(await s.getByText("VERİ SIZDI").count()));
     await tasmaYok(s, `${on} asistan`);
     await s.goto(U + "/aku/AKU-D24-0071"); await bekle(s, 1400);
     kontrol(`${on}: akü detayında NaN/undefined yok`, !/NaN|undefined/.test(await s.locator("main").innerText()));
@@ -167,9 +171,13 @@ try {
     await s.goto(M + "/sohbet"); await bekle(s);
     await s.getByRole("button", { name: "Akümde ne kadar enerji var?" }).click();
     await bekle(s, 1500);
-    kontrol(`${on}: sohbet yanıtı geldi`, await s.getByText(/şarj %\d+/).first().isVisible());
-    kontrol(`${on}: asistan yanıtı sunucudan (bağlamla)`, await s.getByText("Asistan yanıtı").first().isVisible());
-    kontrol(`${on}: kalın yazı işlendi`, (await s.locator("main strong", { hasText: "Asistan yanıtı" }).count()) > 0);
+    kontrol(`${on}: veri sorusu yerelde yanıtlandı`, await s.getByText(/şarj %\d+/).first().isVisible());
+    await s.getByRole("button", { name: "Akümün ömrünü nasıl uzatırım?" }).first().click().catch(async () => {
+      await s.getByRole("textbox").last().fill("Akümün ömrünü nasıl uzatırım?"); await s.keyboard.press("Enter");
+    });
+    await bekle(s, 1500);
+    kontrol(`${on}: genel soru dil modeline, veri yanıtı geçmişe girmeden`, await s.getByText("(musteri, geçmiş 0)").first().isVisible());
+    kontrol(`${on}: kalın yazı işlendi`, (await s.locator("main strong", { hasText: "Genel yanıt" }).count()) > 0);
     kontrol(`${on}: kaynak bağlantısı yeni sekmede`,
       (await s.locator('main a[href="https://ornek.org/lfp-bakim"][target="_blank"]').count()) > 0);
     await s.getByRole("textbox").last().fill("sınır testi");
