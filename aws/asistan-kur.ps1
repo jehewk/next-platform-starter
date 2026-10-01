@@ -116,7 +116,8 @@ function AnahtarOku([string]$onEk, [string]$ortamAdi) {
 # Gemini anahtarı: klasik biçim AIza + 35 karakter; metnin içinden ayıklanır.
 function GeminiAnahtariOku {
   $desen = 'AIza[0-9A-Za-z_\-]{35}'
-  if ($env:GEMINI_API_KEY) { Bilgi "bu bilgisayardaki GEMINI_API_KEY kullanılıyor"; $a = AnahtarAyikla $env:GEMINI_API_KEY $desen }
+  $girilen = $null; $pano = $null
+  if ($env:GEMINI_API_KEY) { Bilgi "bu bilgisayardaki GEMINI_API_KEY kullanılıyor"; $girilen = $env:GEMINI_API_KEY; $a = AnahtarAyikla $girilen $desen }
   else {
     Bilgi "Anahtarı KOPYALAYIN (Ctrl+C), sonra burada yalnızca Enter'a basın (sağ tıkla yapıştırmak da olur)."
     $guvenli = Read-Host "  API anahtarı (ekranda görünmez)" -AsSecureString
@@ -132,8 +133,17 @@ function GeminiAnahtariOku {
     }
   }
   if (-not $a) {
-    throw ("Anahtar okunamadı. aistudio.google.com > Get API key sayfasında anahtarın yanındaki kopyala " +
-           "düğmesine basın, betiği yeniden çalıştırıp soruda yalnızca Enter'a basın.")
+    # Ne geldiğini anahtarı göstermeden tarif et
+    $gelen = if ($girilen -and "$girilen".Trim().Length -gt 2) { "$girilen" } else { "$pano" }
+    $t = "$gelen".Trim()
+    $tarif = if (-not $t) { "hiçbir şey gelmedi (pano da boş)" }
+      elseif ($t -match '^https?://') { "bir web adresi geldi ($($t.Length) karakter) — sayfa adresi kopyalanmış, anahtar değil" }
+      elseif ($t -match '\s') { "boşluklu bir metin geldi ($($t.Length) karakter, $(@($t -split '\s+').Count) kelime) — anahtar değil" }
+      else { "$($t.Length) karakter geldi; içinde anahtarda olmayan işaretler var: $((@($t.ToCharArray() | Where-Object { $_ -notmatch '[A-Za-z0-9_.\-]' } | Select-Object -Unique) -join ' '))" }
+    Uyari "Okunan: $tarif"
+    Uyari "Kesin yol: PowerShell'de önce şunu yazın (tırnaklar arasına anahtarı yapıştırın), sonra betiği çalıştırın:"
+    Uyari '   $env:GEMINI_API_KEY = "AIza...buraya yapıştırın..."'
+    throw "Anahtar okunamadı."
   }
   if ($a -notmatch '^AIza') { Bilgi "anahtar alışılmış biçimde değil ($($a.Length) karakter); Google'a sorularak doğrulanacak" }
   return $a
