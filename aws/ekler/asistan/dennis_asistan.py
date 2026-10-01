@@ -307,7 +307,14 @@ def _anthropic_yanitla(model, sistem, mesajlar):
         return 429, {"hata": "Asistan şu an yoğun; birkaç dakika sonra tekrar deneyin."}
     except anthropic.APIStatusError as e:
         print(f"asistan api hatasi {e.status_code}: {e.message}")
-        return 502, {"hata": "Asistan şu an yanıt veremiyor."}
+        m = str(e.message).lower()
+        if "credit balance" in m or "billing" in m:
+            return 502, {"hata": "Anthropic hesabında kredi yok (console.anthropic.com > Billing)."}
+        if e.status_code == 404 or "model" in m and "not found" in m:
+            return 502, {"hata": "Asistan modeli bulunamadı (ASISTAN_MODEL)."}
+        if e.status_code == 403:
+            return 502, {"hata": "Anthropic anahtarının bu işleme izni yok."}
+        return 502, {"hata": f"Asistan şu an yanıt veremiyor (Anthropic {e.status_code})."}
 
     kullanim = yanit.usage
     arama = getattr(getattr(kullanim, "server_tool_use", None), "web_search_requests", 0) or 0
