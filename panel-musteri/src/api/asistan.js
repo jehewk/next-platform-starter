@@ -27,19 +27,23 @@ export const ORNEK_SORULAR = [
 ];
 
 export async function soruSor(soru, gecmis = []) {
+  let uzakHata = null;
   if (UZAK_YOL) {
     try {
       const baglam = await baglamOlustur().catch(() => "");
       const c = await api.post(UZAK_YOL, { soru, gecmis: gecmis.slice(-12), baglam, panel: "musteri" });
       if (c?.yanit) return c.yanit;
+      uzakHata = "boş yanıt";
     } catch (e) {
       // Günlük sınır ya da zaman aşımı: sunucunun mesajı gösterilir. Diğer
-      // hatalarda (asistan kurulmamış, bağlantı yok) yerel motor yanıtlar.
+      // hatalarda yerel motor yanıtlar ve nedeni yanıtın altına yazılır.
       if (e?.durum === 429 || e?.durum === 504) return e.message;
+      uzakHata = `${e?.message || "bağlantı hatası"}${e?.durum ? ` (${e.durum})` : ""}`;
     }
   }
   const { cihazlar } = await sistemimiGetir();
-  return yanitla(soru, cihazlar.filter((c) => ["aktif", "uyari", "arizali"].includes(c.durum)));
+  const yerel = await yanitla(soru, cihazlar.filter((c) => ["aktif", "uyari", "arizali"].includes(c.durum)));
+  return uzakHata ? `${yerel}\n\n(Asistana şu an ulaşılamadı: ${uzakHata}. Bu yanıt cihaz verinizden hazırlandı.)` : yerel;
 }
 
 const ad = (c) => (c.tip === "aku" ? "Akü" : "İnverter");

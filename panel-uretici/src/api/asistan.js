@@ -43,19 +43,23 @@ async function sistemVerisi() {
 }
 
 export async function soruSor(soru, gecmis = []) {
+  let uzakHata = null;
   if (UZAK_YOL) {
     try {
       const baglam = await baglamOlustur(soru).catch(() => "");
       const c = await api.post(UZAK_YOL, { soru, gecmis: gecmis.slice(-12), baglam, panel: "uretici" });
       if (c?.yanit) return c.yanit;
+      uzakHata = "boş yanıt";
     } catch (e) {
       // Günlük sınır ya da zaman aşımı: sunucunun mesajı gösterilir. Diğer
-      // hatalarda (asistan kurulmamış, bağlantı yok) yerel motor yanıtlar.
+      // hatalarda yerel motor yanıtlar ve nedeni yanıtın altına yazılır.
       if (e?.durum === 429 || e?.durum === 504) return e.message;
+      uzakHata = `${e?.message || "bağlantı hatası"}${e?.durum ? ` (${e.durum})` : ""}`;
     }
   }
   const veri = await sistemVerisi();
-  return yanitla(soru, veri);
+  const yerel = await yanitla(soru, veri);
+  return uzakHata ? `${yerel}\n\n(Asistana ulaşılamadı: ${uzakHata}. Yanıt yerel motordan; aws\\asistan-teshis.ps1 nedeni gösterir.)` : yerel;
 }
 
 /** Dil modeline giden panel özeti; soru bir seri numarası içeriyorsa o cihazın ayrıntısı da eklenir. */
