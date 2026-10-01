@@ -196,7 +196,7 @@ else { Bilgi ("1. Anthropic API anahtarı " + $(if ($anahtarVar -and -not $Anaht
 Bilgi "2. Günlük soru sayacı: kişi başı $KullaniciGunlukLimit, toplam $ToplamGunlukLimit soru/gün"
 Bilgi ("3. Lambda katmanı $KATMAN (" + $(if ($Saglayici -eq "anthropic") { "Anthropic SDK $SDK_SURUMU + " }) + "asistan modülü)")
 if ($Saglayici -eq "bedrock") { Bilgi "4. Model $Model (web araması yok)" }
-elseif ($Saglayici -eq "gemini") { Bilgi "4. Google Gemini ücretsiz katman: dakikada ~10-15, günde ~1000 istek; web araması yok" }
+elseif ($Saglayici -eq "gemini") { Bilgi ("4. Google Gemini ücretsiz katman: dakikada ~10-15, günde ~1000 istek; fotoğraf inceleme; " + $(if ($WebArama -gt 0) { "Google web araması (ücretsiz katmanda günlük sınırlı; kapatmak için -WebArama 0)" } else { "web araması kapalı" })) }
 else { Bilgi ("4. Model $Model" + $(if ($Model -notlike "claude-haiku*") { ", efor $Efor" }) + ", web araması soru başına en fazla $WebArama") }
 Bilgi "5. Lambda yaması (/de/asistan) ve iki uygulamanın yeniden yayını"
 if ($Saglayici -eq "gemini") { Bilgi "Ücret yok (ücretsiz katman). Not: ücretsiz katmanda sorular Google'ın ürün geliştirmesinde kullanılabilir; uygulamalar müşteri verisini göndermez." }
@@ -276,6 +276,37 @@ if ($Saglayici -eq "bedrock") {
     elseif ($h.Mesaj -match "location") { throw "Gemini API bu konumdan kullanılamıyor: $($h.Mesaj)" }
     else { throw "Gemini deneme çağrısı başarısız ($($h.Kod)): $($h.Mesaj)" }
   }
+  # Web araması (Google Search): ücretsiz katmanda her modelde açık değil. Önce seçilen
+  # model denenir; olmazsa aramayı destekleyen başka bir flash modeli yalnızca arama için seçilir.
+  $WebModel = ""
+  if ($WebArama -gt 0) {
+    $aramaGovde = @{ contents = @(@{ role = "user"; parts = @(@{ text = "Bugün İstanbul'da hava nasıl? Tek cümle." }) })
+                     tools = @(@{ google_search = @{} }); generationConfig = @{ maxOutputTokens = 60 } } | ConvertTo-Json -Depth 8
+    $adaylar = @($Model) + @($uygun | Sort-Object @{ Expression = { [int]($_.name -match "lite") }; Descending = $true },
+      @{ Expression = { [double]([regex]::Match($_.name, 'gemini-(\d+(\.\d+)?)').Groups[1].Value) }; Descending = $true } |
+      ForEach-Object { $_.name -replace '^models/', '' } | Where-Object { $_ -ne $Model })
+    $aramaTamam = $false; $kotaDolu = $false
+    foreach ($m in ($adaylar | Select-Object -First 4)) {
+      try {
+        $d = Invoke-RestMethod -Method Post -Uri "$GEMINI_TABAN/v1beta/models/${m}:generateContent" -Headers $baslik `
+          -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($aramaGovde)) -TimeoutSec 40
+        $aramaTamam = $true
+        if ($m -ne $Model) { $WebModel = $m }
+        $kaynak = @($d.candidates[0].groundingMetadata.groundingChunks).Count
+        Tamam "web araması çalışıyor ($m$(if ($kaynak) { ", $kaynak kaynak" }))"
+        break
+      } catch {
+        $h = GeminiHatasi $_
+        if ($h.Kod -eq 429) { $kotaDolu = $true; Uyari "web araması denenemedi: kota şu an dolu ($m)"; break }
+        Bilgi "$m ile web araması yok ($($h.Kod)): $($h.Mesaj)"
+      }
+    }
+    if (-not $aramaTamam -and -not $kotaDolu) {
+      Uyari "Bu anahtarla ücretsiz web araması kullanılamıyor; asistan aramasız (kendi bilgisiyle) yanıtlar."
+      $WebArama = 0
+    }
+  }
+  Bilgi "Fotoğraf: sohbete eklenen fotoğrafları $Model inceler (ek ayar gerekmez)."
   $gAnahtar = $null
 } elseif (-not $anahtarVar -or $AnahtarYenile) {
   Adim "1/6 Anthropic API anahtarı"
@@ -421,6 +452,7 @@ $ortam = @{
 }
 if ($yeniAnahtar) { $ortam.ANTHROPIC_API_KEY = $yeniAnahtar }
 if ($yeniGemini) { $ortam.GEMINI_API_KEY = $yeniGemini }
+if ($Saglayici -eq "gemini") { $ortam.ASISTAN_WEB_MODEL = $WebModel }
 if (LambdaOrtamGuncelle $ortam) { Tamam "ortam değişkenleri güncellendi (diğerleri korundu)" } else { Tamam "ortam değişkenleri güncel" }
 $yeniAnahtar = $null; $yeniGemini = $null
 Remove-Item $yerel -Recurse -Force -ErrorAction SilentlyContinue

@@ -58,5 +58,9 @@ hata diğerinde de düzeltilmeli. Mimari ve yayın: kök `YAYIN.md`.
 - Sunucu: `aws/ekler/asistan/dennis_asistan.py` (Lambda katmanı). `ASISTAN_SAGLAYICI`:
   `gemini` (urllib, GEMINI_API_KEY), `bedrock` (boto3 Converse), `anthropic` (SDK katmanda).
   Ana Lambda'ya yalnızca yönlendirme (yamala.py, yama E). Günlük sınır `dennis-asistan-kota`.
+- Fotoğraf: `api/gorsel.js` küçültür; `soruSor(soru, gecmis, { gorsel })` ayrıştırıcıyı atlar,
+  istek `gorsel: {tur, veri}` taşır. Geçmişte yalnızca önizleme (`m.gorsel`) saklanır.
+- Gemini web araması: yanıt `arama` (Google önerileri HTML'i) taşıyabilir; `AramaOnerileri`
+  yalıtılmış iframe'de gösterir (kullanım şartı). Kaynaklar `[başlık](adres)` biçiminde gelir.
 - Kurulum/teşhis: `aws/asistan-kur.ps1`, `aws/asistan-teshis.ps1`.
 - Test: e2e yerel/genel ayrımını, "bugün kayıt olanlar"ı ve veri sızmamasını denetler.

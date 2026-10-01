@@ -51,24 +51,31 @@ function modelGecmisi(gecmis) {
     const m = gecmis[i];
     if (m.rol === "kullanici" && gecmis[i + 1]?.kaynak === "yerel") { i++; continue; }
     if (m.rol === "asistan" && m.kaynak !== "model") continue;
-    sonuc.push({ rol: m.rol, metin: m.metin });
+    // Fotoğraf geçmişe girmez; yalnızca gönderildiği soruyla birlikte gider
+    sonuc.push({ rol: m.rol, metin: m.gorsel ? `[fotoğraf] ${m.metin}`.trim() : m.metin });
   }
   return sonuc.slice(-12);
 }
 
-export async function soruSor(soru, gecmis = []) {
-  const veri = await sistemVerisi();
-  const niyet = ureticiNiyeti(soru, veri);
-  if (niyet) return { metin: await yanitla(niyet, veri), kaynak: "yerel" };
+export async function soruSor(soru, gecmis = [], { gorsel } = {}) {
+  // Fotoğraflı soru her zaman dil modeline gider (inceleme/yorum)
+  if (!gorsel) {
+    const veri = await sistemVerisi();
+    const niyet = ureticiNiyeti(soru, veri);
+    if (niyet) return { metin: await yanitla(niyet, veri), kaynak: "yerel" };
+  }
 
   if (!UZAK_YOL) return { metin: anlamadim(), kaynak: "yerel" };
   try {
-    const c = await api.post(UZAK_YOL, { soru, gecmis: modelGecmisi(gecmis), panel: "uretici" });
-    if (c?.yanit) return { metin: c.yanit, kaynak: "model" };
+    const c = await api.post(UZAK_YOL, {
+      soru, gecmis: modelGecmisi(gecmis), panel: "uretici",
+      ...(gorsel ? { gorsel: { tur: gorsel.tur, veri: gorsel.veri } } : {}),
+    });
+    if (c?.yanit) return { metin: c.yanit, kaynak: "model", ...(c.arama ? { arama: c.arama } : {}) };
     return { metin: anlamadim("boş yanıt"), kaynak: "yerel" };
   } catch (e) {
     // Günlük sınır / zaman aşımı: sunucunun mesajı. Diğer hatalar: yardım + neden.
-    if (e?.durum === 429 || e?.durum === 504) return { metin: e.message, kaynak: "yerel" };
+    if (e?.durum === 429 || e?.durum === 504 || (gorsel && e?.durum === 400)) return { metin: e.message, kaynak: "yerel" };
     return { metin: anlamadim(`${e?.message || "bağlantı hatası"}${e?.durum ? ` (${e.durum})` : ""}`), kaynak: "yerel" };
   }
 }

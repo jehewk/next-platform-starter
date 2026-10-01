@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUp, Copy, Check, Sparkles } from "lucide-react";
+import { ArrowUp, Copy, Check, Sparkles, ImagePlus, X } from "lucide-react";
 import { useSohbet } from "../api/sohbetler";
 import { ORNEK_SORULAR } from "../api/asistan";
+import { fotografHazirla } from "../api/gorsel";
 
 /**
  * Mesaj akışı + yazma alanı. Sohbet sayfasında ve sağ çekmecede kullanılır.
@@ -11,6 +12,9 @@ import { ORNEK_SORULAR } from "../api/asistan";
 export default function SohbetPaneli({ kompakt = false }) {
   const { aktif, bekliyor, gonder } = useSohbet();
   const [giris, setGiris] = useState("");
+  const [ek, setEk] = useState(null);           // {tur, veri, onizleme}
+  const [ekHata, setEkHata] = useState("");
+  const dosya = useRef(null);
   const alan = useRef(null);
   const son = useRef(null);
 
@@ -24,9 +28,18 @@ export default function SohbetPaneli({ kompakt = false }) {
   }, [giris]);
 
   function yolla(metin = giris) {
-    if (!metin.trim() || bekliyor) return;
-    gonder(metin);
+    if ((!metin.trim() && !ek) || bekliyor) return;
+    gonder(metin, ek);
     setGiris("");
+    setEk(null);
+  }
+
+  async function fotografSec(e) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setEkHata("");
+    try { setEk(await fotografHazirla(f)); } catch (h) { setEk(null); setEkHata(h.message); }
   }
 
   const bos = aktif.mesajlar.length === 0;
@@ -66,16 +79,37 @@ export default function SohbetPaneli({ kompakt = false }) {
       </div>
 
       <div className={`border-t border-cizgi ${kompakt ? "p-3" : "px-4 py-3 sm:px-8"} pb-[max(0.75rem,env(safe-area-inset-bottom))]`}>
+        {(ek || ekHata) && (
+          <div className={`mx-auto mb-2 flex items-center gap-2.5 ${kompakt ? "" : "max-w-3xl"}`}>
+            {ek && (
+              <div className="relative shrink-0">
+                <img src={ek.onizleme} alt="Eklenen fotoğraf" className="h-14 w-14 rounded-md object-cover ring-1 ring-cizgi" />
+                <button onClick={() => setEk(null)} aria-label="Fotoğrafı kaldır"
+                  className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-panel text-soluk ring-1 ring-cizgi hover:text-metin">
+                  <X size={13} />
+                </button>
+              </div>
+            )}
+            <p className={`text-2xs leading-snug ${ekHata ? "text-kritik" : "text-sonuk"}`}>
+              {ekHata || "Fotoğraf incelenmek üzere yapay zekâ hizmetine (Google Gemini) gönderilir; uygulamada saklanmaz."}
+            </p>
+          </div>
+        )}
         <div className={`mx-auto flex items-end gap-2 rounded-lg border border-cizgi bg-zemin p-2
                          focus-within:border-soluk/60 ${kompakt ? "" : "max-w-3xl"}`}>
+          <input ref={dosya} type="file" accept="image/*" className="hidden" onChange={fotografSec} />
+          <button onClick={() => dosya.current?.click()} disabled={bekliyor} aria-label="Fotoğraf ekle" title="Fotoğraf ekle"
+            className="dugme-hayalet h-8 w-8 shrink-0 rounded-md p-0">
+            <ImagePlus size={17} />
+          </button>
           <textarea
             ref={alan} rows={1} value={giris}
             onChange={(e) => setGiris(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); yolla(); } }}
-            placeholder="Bir soru yazın…"
+            placeholder={ek ? "Fotoğraf hakkında ne sormak istersiniz? (boş bırakabilirsiniz)" : "Bir soru yazın…"}
             className="max-h-40 flex-1 resize-none bg-transparent px-1.5 py-1 text-sm outline-none placeholder:text-sonuk"
           />
-          <button onClick={() => yolla()} disabled={bekliyor || !giris.trim()} aria-label="Gönder"
+          <button onClick={() => yolla()} disabled={bekliyor || (!giris.trim() && !ek)} aria-label="Gönder"
             className="dugme-ana h-8 w-8 shrink-0 rounded-md p-0">
             <ArrowUp size={16} />
           </button>
@@ -95,10 +129,13 @@ function Mesaj({ m }) {
 
   if (m.rol === "kullanici") {
     return (
-      <div className="flex justify-end">
-        <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-panel2 px-3.5 py-2 text-sm ring-1 ring-cizgi">
-          {m.metin}
-        </div>
+      <div className="flex flex-col items-end gap-1.5">
+        {m.gorsel && <img src={m.gorsel} alt="Gönderilen fotoğraf" className="max-h-48 max-w-[60%] rounded-xl object-cover ring-1 ring-cizgi" />}
+        {m.metin && (
+          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-panel2 px-3.5 py-2 text-sm ring-1 ring-cizgi">
+            {m.metin}
+          </div>
+        )}
       </div>
     );
   }
@@ -114,6 +151,7 @@ function Mesaj({ m }) {
   return (
     <div className="group">
       <div className="text-sm leading-relaxed text-metin"><Bicimli metin={m.metin} /></div>
+      {m.arama && <AramaOnerileri html={m.arama} />}
       <button onClick={kopyala}
         className="mt-1 flex items-center gap-1 rounded px-1 py-0.5 text-2xs text-sonuk opacity-0 transition-opacity
                    hover:text-metin focus:opacity-100 group-hover:opacity-100">
@@ -188,11 +226,45 @@ function KodBlogu({ metin }) {
   );
 }
 
+/**
+ * Google arama önerileri (Gemini web araması kullanım şartı: yanıtla birlikte gösterilir).
+ * Google'ın hazır HTML'i yalıtılmış çerçevede açılır; betik çalışmaz, bağlantılar yeni sekmede açılır.
+ */
+function AramaOnerileri({ html }) {
+  const belge = `<!doctype html><html><head><meta charset="utf-8"><base target="_blank">
+<meta name="color-scheme" content="light dark"><style>body{margin:0;background:transparent}</style></head><body>${html}</body></html>`;
+  return (
+    <iframe title="Google arama önerileri" srcDoc={belge} sandbox="allow-popups allow-popups-to-escape-sandbox"
+      className="mt-2 h-[58px] w-full rounded-md border-0" loading="lazy" />
+  );
+}
+
 // Web adresleri (asistanın kaynakları) yeni sekmede açılır; sondaki noktalama bağlantıya dahil edilmez.
 const ADRES = /(https?:\/\/[^\s<>"'()]*[^\s<>"'().,;:!?])/;
 const KALIN = /\*\*([^*\n]+)\*\*/;
 
+// [başlık](adres) biçimindeki kaynaklar başlığıyla gösterilir (Google yönlendirme adresleri uzun)
+const MD_BAGLANTI = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/;
+
 function Baglantili({ metin }) {
+  const p = metin.split(MD_BAGLANTI);
+  if (p.length === 1) return <DuzBaglantili metin={metin} />;
+  const sonuc = [];
+  for (let i = 0; i < p.length; i += 3) {
+    if (p[i]) sonuc.push(<DuzBaglantili key={i} metin={p[i]} />);
+    if (i + 2 < p.length) {
+      sonuc.push(
+        <a key={`b${i}`} href={p[i + 2]} target="_blank" rel="noopener noreferrer"
+          className="text-bilgi underline decoration-bilgi/40 underline-offset-2 hover:decoration-bilgi">
+          {p[i + 1]}
+        </a>
+      );
+    }
+  }
+  return sonuc;
+}
+
+function DuzBaglantili({ metin }) {
   return metin.split(ADRES).map((p, i) =>
     i % 2 === 1 ? (
       <a key={i} href={p} target="_blank" rel="noopener noreferrer"

@@ -149,6 +149,18 @@ yeni "flash-lite"ı seçer. Ücretsiz katman dakikada ~10-15, günde ~1000 istek
 günlük sınır 900 tutulur. Ücretsiz katmanda sorular Google'ın ürün geliştirmesinde
 kullanılabilir — gizlilik metninde belirtin (müşteri verisi gönderilmez).
 
+**Web araması (Gemini):** güncel bilgi gereken sorularda (kur, fiyat, mevzuat, haber)
+model Google'da arar; kaynaklar başlığıyla ve Google arama önerileri (kullanım şartı)
+yanıtın altında gösterilir. Ücretsiz katmanda arama her modelde açık değildir: betik
+seçilen modeli dener, olmazsa aramayı destekleyen başka bir flash modelini yalnızca
+arama için seçer (`ASISTAN_WEB_MODEL`); hiçbiri olmazsa aramayı kapatır. Arama sınırı
+dolarsa asistan o soruyu aramasız yanıtlar. Kapatmak: `-WebArama 0`.
+
+**Fotoğraf:** sohbette 🖼 düğmesiyle (telefonda kamera da açılır) fotoğraf eklenir;
+tarayıcıda 1280 px JPEG'e küçültülüp yalnızca o soruyla gönderilir, sunucuda saklanmaz,
+geçmişte yalnızca küçük önizleme kalır. Fotoğraflı soru ayrıştırıcıya girmez, her zaman
+dil modeline gider. Üç sağlayıcı da fotoğraf inceler.
+
 Kişi başı (20) ve toplam günlük soru sınırı vardır; sayaç çalışmazsa asistan kapalı
 kalır. Dil modeline ulaşılamazsa uygulama ayrıştırıcının yapabildiklerini ve nedeni
 gösterir.

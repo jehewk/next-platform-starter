@@ -10,26 +10,35 @@ Sağlayıcı (ASISTAN_SAGLAYICI):
   anthropic Claude (Anthropic SDK katmanda olmalı, ANTHROPIC_API_KEY gerekir);
             web araması yapabilir.
   gemini    Google Gemini API (ücretsiz katman; GEMINI_API_KEY). Python'un kendi
-            urllib'i yeter. Web araması yok.
+            urllib'i yeter. ASISTAN_WEB_ARAMA > 0 ise Google Search ile
+            güncel bilgi arar (ASISTAN_WEB_MODEL ayrı bir model seçebilir);
+            arama kullanılamazsa aramasız yanıtlar.
+
+Fotoğraf: istek isteğe bağlı bir görsel taşıyabilir; üç sağlayıcı da inceler.
+Görsel saklanmaz, geçmişe girmez (yalnızca o soruyla birlikte gönderilir).
 
 Uygulamalar sistem verisini GÖNDERMEZ: veri soruları tarayıcıdaki ayrıştırıcıda
 yanıtlanır (ayristirici.js); buraya yalnızca genel sorular gelir.
 Ana Lambda her isteği önce oturum için doğrular (oturumsuz → 401); buraya
 yalnızca giriş yapmış kullanıcılar ulaşır.
 
-İstek:   {soru, gecmis: [{rol: "kullanici"|"asistan", metin}], baglam?, panel?}
-Yanıt:   {yanit}  |  {hata}
+İstek:   {soru, gecmis: [{rol: "kullanici"|"asistan", metin}], baglam?, panel?,
+          gorsel?: {tur: "image/jpeg"|"image/png"|"image/webp", veri: base64}}
+Yanıt:   {yanit, arama?}  |  {hata}
+         arama: Google arama önerileri (HTML); Gemini Search kullanım şartı
+         gereği yanıtla birlikte gösterilmelidir.
 
 Maliyet koruması:
   · kullanıcı başına ve toplam GÜNLÜK soru sınırı (DynamoDB sayaç tablosu;
     tablo yoksa ya da erişilemiyorsa asistan kapalı kalır — sınırsız çalışmaz)
   · soru, geçmiş ve bağlam uzunluğu kırpılır; yanıt uzunluğu sınırlı
-  · web araması (yalnızca anthropic) soru başına en fazla ASISTAN_WEB_ARAMA kez
+  · web araması (anthropic) soru başına en fazla ASISTAN_WEB_ARAMA kez
+  · görsel en fazla 4 MB; tarayıcı göndermeden önce küçültür
 
 Ortam değişkenleri (aws/asistan-kur.ps1 ayarlar):
   ASISTAN_SAGLAYICI, ASISTAN_MODEL, ASISTAN_KOTA_TABLOSU, ASISTAN_KULLANICI_LIMIT,
-  ASISTAN_TOPLAM_LIMIT; anthropic için ayrıca ANTHROPIC_API_KEY, ASISTAN_EFFORT,
-  ASISTAN_WEB_ARAMA
+  ASISTAN_TOPLAM_LIMIT, ASISTAN_WEB_ARAMA; anthropic için ayrıca ANTHROPIC_API_KEY,
+  ASISTAN_EFFORT; gemini için GEMINI_API_KEY, ASISTAN_WEB_MODEL
 """
 import base64
 import json
@@ -51,6 +60,9 @@ MAKS_BAGLAM = 6000
 MAKS_GECMIS = 12          # mesaj
 MAKS_MESAJ = 4000
 MAKS_CIKTI = 2048         # token; telefonda okunacak kısa yanıtlar
+MAKS_GORSEL = 4 * 1024 * 1024   # bayt (çözülmüş)
+GORSEL_TURLERI = ("image/jpeg", "image/png", "image/webp")
+GORSEL_SORUSU = "Bu fotoğrafı incele ve yorumla."
 VARSAYILAN_MODEL = {"bedrock": "eu.amazon.nova-lite-v1:0", "anthropic": "claude-haiku-4-5",
                     "gemini": "gemini-flash-lite-latest"}
 SURE = 24.0               # sn; API Gateway 29 sn'de keser
@@ -65,6 +77,8 @@ Kullanıcının sistem verisi <sistem_verisi> etiketinde gelebilir; gelmediyse o
 {GUNCEL}
 
 Türkçe, sade ve kısa yaz; teknik bir terim gerekiyorsa kısaca açıkla. Yanıt telefonda okunacak: birkaç kısa paragraf, gerekirse "- " ile başlayan madde listesi. Başlık ve tablo kullanma.
+
+Fotoğraf gönderilirse gördüğünü dikkatle incele ve yorumla; emin olmadığın ayrıntıyı (etiket, değer, hasar) tahmin ettiğini belirt. Cihaz fotoğrafında şişme, yanık, erime, kaçak ya da gevşek bağlantı gibi tehlike işareti görürsen bunu açıkça söyle.
 
 Kod istenirse kodu ``` ile açılıp kapanan kod bloğunda ver (ilk satıra dil adı yazabilirsin); kod dışında başlık ve tablo kullanma.
 
@@ -84,20 +98,23 @@ Panel verisi <sistem_verisi> etiketinde gelebilir; gelmediyse ona erişimin yokt
 
 Türkçe, net ve kısa yaz. Gerekirse "- " ile başlayan madde listesi kullan.
 
+Fotoğraf gönderilirse gördüğünü dikkatle incele ve yorumla; emin olmadığın ayrıntıyı (etiket, değer, hasar) tahmin ettiğini belirt. Cihaz fotoğrafında şişme, yanık, erime, kaçak ya da gevşek bağlantı gibi tehlike işareti görürsen bunu açıkça söyle.
+
 Kod istenirse kodu ``` ile açılıp kapanan kod bloğunda ver (ilk satıra dil adı yazabilirsin); kod dışında başlık ve tablo kullanma.
 
 Sohbet etmek isteyene samimi ve doğal karşılık ver, konuyu firmaya çekmeye çalışma. Kendin hakkında bir şey uydurma: bir dil modelisin, verileri izlemiyorsun ve sohbette yalnızca sana yazılanı görüyorsun. Kullanıcı bir hitap ya da üslup isterse ("kanka de") sohbet boyunca ona uy."""
 
 
-GUNCEL_WEB = ("Güncel bilgi gereken sorularda (fiyatlar, mevzuat, teşvikler, standartlar, haberler) "
-              "web aramasını kullan ve yanıtın sonunda kaynağın adresini ver.")
+GUNCEL_WEB = ("Güncel bilgi gereken sorularda (fiyatlar, kurlar, mevzuat, teşvikler, standartlar, haberler, "
+              "hava durumu) web aramasını kullan. Bugünün tarihi: {TARIH}.")
 GUNCEL_YOK = ("Güncel bilgi gereken sorularda (fiyatlar, mevzuat, teşvikler, standartlar, haberler) "
               "bilgin eski olabilir; bunu kısaca belirt ve resmi kaynağa bakmasını öner.")
 
 
 def _sistem(panel, web):
     metin = SISTEM_URETICI if panel == "uretici" else SISTEM_MUSTERI
-    return metin.replace("{GUNCEL}", GUNCEL_WEB if web else GUNCEL_YOK)
+    guncel = GUNCEL_WEB.replace("{TARIH}", datetime.now(TR_SAATI).strftime("%d.%m.%Y")) if web else GUNCEL_YOK
+    return metin.replace("{GUNCEL}", guncel)
 
 
 def _ayar(ad, varsayilan):
@@ -151,6 +168,30 @@ def _kota(dynamodb, kullanici):
     return None
 
 
+def _gorsel(body):
+    """Döner: None (görsel yok), (tur, base64) ya da hata metni (str)."""
+    g = body.get("gorsel")
+    if not g:
+        return None
+    if not isinstance(g, dict):
+        return "Fotoğraf okunamadı."
+    tur = str(g.get("tur") or "").lower()
+    veri = str(g.get("veri") or "")
+    if veri.startswith("data:"):
+        veri = veri.split(",", 1)[-1]
+    if tur not in GORSEL_TURLERI:
+        return "Yalnızca JPEG, PNG ya da WebP fotoğraf gönderilebilir."
+    if len(veri) > MAKS_GORSEL * 4 // 3 + 4:
+        return "Fotoğraf çok büyük."
+    try:
+        ham = base64.b64decode(veri, validate=True)
+    except Exception:
+        return "Fotoğraf okunamadı."
+    if not ham:
+        return "Fotoğraf okunamadı."
+    return tur, base64.b64encode(ham).decode("ascii")
+
+
 def _mesajlar(body):
     mesajlar = []
     for m in (body.get("gecmis") or [])[-MAKS_GECMIS:]:
@@ -165,7 +206,12 @@ def _mesajlar(body):
         mesajlar.append({"role": rol, "content": metin})
 
     soru = str(body.get("soru") or "").strip()[:MAKS_SORU]
+    gorsel = body.get("_gorsel")
+    if gorsel and not soru:
+        soru = GORSEL_SORUSU
     icerik = []
+    if gorsel:
+        icerik.append({"type": "image", "source": {"type": "base64", "media_type": gorsel[0], "data": gorsel[1]}})
     baglam = str(body.get("baglam") or "").strip()[:MAKS_BAGLAM]
     if baglam:
         icerik.append({"type": "text", "text": f"<sistem_verisi>\n{baglam}\n</sistem_verisi>"})
@@ -220,8 +266,14 @@ def _bedrock_mesajlar(mesajlar):
     """Anthropic biçimindeki mesajları Converse biçimine çevirir (aynı roller birleştirilir)."""
     sonuc = []
     for m in mesajlar:
-        parcalar = [m["content"]] if isinstance(m["content"], str) else [b["text"] for b in m["content"]]
-        icerik = [{"text": p} for p in parcalar if p]
+        bloklar = [{"type": "text", "text": m["content"]}] if isinstance(m["content"], str) else m["content"]
+        icerik = []
+        for b in bloklar:
+            if b["type"] == "image":
+                icerik.append({"image": {"format": b["source"]["media_type"].split("/")[1],
+                                         "source": {"bytes": base64.b64decode(b["source"]["data"])}}})
+            elif b.get("text"):
+                icerik.append({"text": b["text"]})
         if sonuc and sonuc[-1]["role"] == m["role"]:
             sonuc[-1]["content"].extend(icerik)
         else:
@@ -276,22 +328,27 @@ def _bedrock_yanitla(model, sistem, mesajlar):
     return 200, {"yanit": metin}
 
 
-def _gemini_yanitla(model, sistem, mesajlar):
-    """Google Gemini generateContent (REST). Mesajlar Anthropic biçiminden çevrilir."""
+def _gemini_icerik(mesajlar):
+    """Anthropic biçimindeki mesajları Gemini contents biçimine çevirir (aynı roller birleştirilir)."""
     icerik = []
     for m in mesajlar:
-        parcalar = [m["content"]] if isinstance(m["content"], str) else [b["text"] for b in m["content"]]
+        bloklar = [{"type": "text", "text": m["content"]}] if isinstance(m["content"], str) else m["content"]
+        p = []
+        for b in bloklar:
+            if b["type"] == "image":
+                p.append({"inline_data": {"mime_type": b["source"]["media_type"], "data": b["source"]["data"]}})
+            elif b.get("text"):
+                p.append({"text": b["text"]})
         rol = "model" if m["role"] == "assistant" else "user"
-        p = [{"text": x} for x in parcalar if x]
         if icerik and icerik[-1]["role"] == rol:
             icerik[-1]["parts"].extend(p)
         else:
             icerik.append({"role": rol, "parts": p})
-    govde = {
-        "systemInstruction": {"parts": [{"text": sistem}]},
-        "contents": icerik,
-        "generationConfig": {"maxOutputTokens": MAKS_CIKTI, "temperature": 0.5},
-    }
+    return icerik
+
+
+def _gemini_cagir(model, govde, sure):
+    """Döner: (yanit_json, None) ya da (None, (http_kodu, mesaj, durum))."""
     model = model[len("models/"):] if model.startswith("models/") else model
     istek = urllib.request.Request(
         f"{os.environ.get('GEMINI_TABAN', 'https://generativelanguage.googleapis.com')}"
@@ -299,50 +356,112 @@ def _gemini_yanitla(model, sistem, mesajlar):
         data=json.dumps(govde).encode("utf-8"), method="POST",
         headers={"Content-Type": "application/json", "x-goog-api-key": os.environ.get("GEMINI_API_KEY", "")})
     try:
-        with urllib.request.urlopen(istek, timeout=SURE) as yanit:
-            y = json.loads(yanit.read().decode("utf-8"))
+        with urllib.request.urlopen(istek, timeout=sure) as yanit:
+            return json.loads(yanit.read().decode("utf-8")), None
     except urllib.error.HTTPError as e:
         try:
             hata = json.loads(e.read().decode("utf-8")).get("error", {})
         except Exception:
             hata = {}
-        mesaj = str(hata.get("message", ""))
-        print(f"asistan gemini hatasi {e.code} {hata.get('status', '')}: {mesaj}")
-        if e.code == 429:
-            return 429, {"hata": "Asistanın ücretsiz kullanım sınırı şu an dolu; biraz sonra tekrar deneyin."}
-        if "location" in mesaj.lower():
-            return 502, {"hata": "Gemini bu bölgeden kullanılamıyor."}
-        if e.code in (401, 403) or "API_KEY" in mesaj or "API key" in mesaj:
-            return 503, {"hata": "Asistan şu an kullanılamıyor (Gemini anahtarı)."}
-        if e.code == 404:
-            return 502, {"hata": "Asistan modeli bulunamadı (ASISTAN_MODEL)."}
-        return 502, {"hata": f"Asistan şu an yanıt veremiyor (Gemini {e.code})."}
+        return None, (e.code, str(hata.get("message", "")), str(hata.get("status", "")))
     except (urllib.error.URLError, socket.timeout, TimeoutError) as e:
-        print(f"asistan gemini baglanti hatasi: {e}")
-        if "timed out" in str(e).lower() or isinstance(e, (socket.timeout, TimeoutError)):
-            return 504, {"hata": "Yanıt çok uzun sürdü; soruyu kısaltıp tekrar deneyin."}
+        zaman = "timed out" in str(e).lower() or isinstance(e, (socket.timeout, TimeoutError))
+        return None, (504 if zaman else 0, str(e), "BAGLANTI")
+
+
+def _gemini_hatasi(kod, mesaj):
+    if kod == 504:
+        return 504, {"hata": "Yanıt çok uzun sürdü; soruyu kısaltıp tekrar deneyin."}
+    if kod == 0:
         return 502, {"hata": "Asistana ulaşılamadı; biraz sonra tekrar deneyin."}
+    if kod == 429:
+        return 429, {"hata": "Asistanın ücretsiz kullanım sınırı şu an dolu; biraz sonra tekrar deneyin."}
+    if "location" in mesaj.lower():
+        return 502, {"hata": "Gemini bu bölgeden kullanılamıyor."}
+    if kod in (401, 403) or "API_KEY" in mesaj or "API key" in mesaj:
+        return 503, {"hata": "Asistan şu an kullanılamıyor (Gemini anahtarı)."}
+    if kod == 404:
+        return 502, {"hata": "Asistan modeli bulunamadı (ASISTAN_MODEL)."}
+    if kod == 400 and ("image" in mesaj.lower() or "inline" in mesaj.lower()):
+        return 400, {"hata": "Fotoğraf işlenemedi; başka bir fotoğraf deneyin."}
+    return 502, {"hata": f"Asistan şu an yanıt veremiyor (Gemini {kod})."}
+
+
+def _gemini_kaynaklar(aday):
+    """Google Search kaynakları: [(başlık, adres)], arama önerisi HTML'i."""
+    meta = aday.get("groundingMetadata") or {}
+    kaynaklar = []
+    for p in meta.get("groundingChunks") or []:
+        web = p.get("web") or {}
+        if web.get("uri") and all(web["uri"] != u for _, u in kaynaklar):
+            kaynaklar.append((str(web.get("title") or "kaynak").replace("]", ")").replace("[", "("), web["uri"]))
+    html = (meta.get("searchEntryPoint") or {}).get("renderedContent") or ""
+    return kaynaklar[:5], html, len(meta.get("webSearchQueries") or [])
+
+
+def _gemini_yanitla(model, sistem, mesajlar, web=False):
+    """Google Gemini generateContent (REST). Mesajlar Anthropic biçiminden çevrilir.
+
+    web: Google Search aracı eklenir (model gerekirse arar). Arama bu modelde/anahtarda
+    kullanılamazsa (ücretsiz katmanda her modelde yok ya da günlük arama sınırı dolu)
+    aynı soru aramasız sorulur.
+    """
+    govde = {
+        "systemInstruction": {"parts": [{"text": sistem}]},
+        "contents": _gemini_icerik(mesajlar),
+        "generationConfig": {"maxOutputTokens": MAKS_CIKTI, "temperature": 0.5},
+    }
+    son = time.monotonic() + SURE
+    y, hata, aramali = None, None, False
+    if web:
+        web_model = _ayar("ASISTAN_WEB_MODEL", model)
+        y, hata = _gemini_cagir(web_model, {**govde, "tools": [{"google_search": {}}]}, SURE)
+        if y is not None:
+            model, aramali = web_model, True
+        elif hata[0] in (400, 403, 404, 429) and "location" not in hata[1].lower() and "API key" not in hata[1]:
+            print(f"asistan gemini aramasiz deneniyor ({web_model} {hata[0]} {hata[2]}): {hata[1]}")
+            if son - time.monotonic() < 4:
+                return 504, {"hata": "Yanıt çok uzun sürdü; soruyu kısaltıp tekrar deneyin."}
+            y, hata = _gemini_cagir(model, govde, son - time.monotonic())
+    else:
+        y, hata = _gemini_cagir(model, govde, SURE)
+    if y is None:
+        print(f"asistan gemini hatasi {hata[0]} {hata[2]}: {hata[1]}")
+        return _gemini_hatasi(hata[0], hata[1])
 
     aday = (y.get("candidates") or [{}])[0]
     durum = aday.get("finishReason")
     kullanim = y.get("usageMetadata") or {}
+    kaynaklar, oneriler, sorgu = _gemini_kaynaklar(aday) if aramali else ([], "", 0)
     print(json.dumps({"asistan": {"model": model, "girdi": kullanim.get("promptTokenCount"),
-                                  "cikti": kullanim.get("candidatesTokenCount"), "arama": 0, "durum": durum}}))
+                                  "cikti": kullanim.get("candidatesTokenCount"), "arama": sorgu,
+                                  "gorsel": any("inline_data" in p for c in govde["contents"] for p in c["parts"]),
+                                  "durum": durum}}))
     metin = "".join(p.get("text", "") for p in ((aday.get("content") or {}).get("parts") or [])
                     if not p.get("thought")).strip()
     engel = (y.get("promptFeedback") or {}).get("blockReason")
-    if not metin and (engel or durum in ("SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION")):
+    if not metin and (engel or durum in ("SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION",
+                                         "IMAGE_SAFETY")):
         return 200, {"yanit": "Bu soruya yanıt veremiyorum. Başka bir konuda yardımcı olabilirim."}
     if not metin:
         return 502, {"hata": "Asistan şu an yanıt veremiyor."}
     if durum == "MAX_TOKENS":
         metin += " …"
-    return 200, {"yanit": metin}
+    if kaynaklar:
+        metin += "\n\nKaynaklar:\n" + "\n".join(f"- [{b}]({u})" for b, u in kaynaklar)
+    sonuc = {"yanit": metin}
+    if oneriler:
+        sonuc["arama"] = oneriler[:20000]
+    return 200, sonuc
 
 
 def yanitla(body, event, dynamodb):
     """Döner: (http_kodu, gövde)."""
     body = body if isinstance(body, dict) else {}
+    gorsel = _gorsel(body)
+    if isinstance(gorsel, str):
+        return 400, {"hata": gorsel}
+    body = {**body, "_gorsel": gorsel}
     soru, mesajlar = _mesajlar(body)
     if not soru:
         return 400, {"hata": "Soru boş olamaz."}
@@ -361,7 +480,8 @@ def yanitla(body, event, dynamodb):
     if saglayici == "bedrock":
         return _bedrock_yanitla(model, _sistem(body.get("panel"), False), mesajlar)
     if saglayici == "gemini":
-        return _gemini_yanitla(model, _sistem(body.get("panel"), False), mesajlar)
+        web = int(_ayar("ASISTAN_WEB_ARAMA", "3")) > 0
+        return _gemini_yanitla(model, _sistem(body.get("panel"), web), mesajlar, web)
     return _anthropic_yanitla(model, _sistem(body.get("panel"), int(_ayar("ASISTAN_WEB_ARAMA", "3")) > 0), mesajlar)
 
 

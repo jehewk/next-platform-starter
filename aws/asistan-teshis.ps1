@@ -44,6 +44,9 @@ if ($saglayici -eq "anthropic") {
 }
 if ($saglayici -eq "gemini") {
   if (& $deger "GEMINI_API_KEY") { Tamam "GEMINI_API_KEY tanımlı (değer gösterilmez)" } else { Sorun "GEMINI_API_KEY tanımsız" }
+  $web = & $deger "ASISTAN_WEB_ARAMA"
+  if ("$web" -eq "0") { Bilgi "web araması kapalı" }
+  else { Bilgi "web araması açık$(if (& $deger 'ASISTAN_WEB_MODEL') { " (arama modeli: $(& $deger 'ASISTAN_WEB_MODEL'))" })" }
 }
 
 # ── 2) Canlı kod ──────────────────────────────────────────────────────────

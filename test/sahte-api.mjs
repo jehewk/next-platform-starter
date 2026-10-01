@@ -238,6 +238,17 @@ export async function sahteIstek(yol, govde = {}, token = "") {
         throw Object.assign(new Error("Bugünkü soru hakkınız doldu; yarın tekrar sorabilirsiniz."), { durum: 429 });
       }
       if (!["musteri", "uretici"].includes(govde.panel)) throw Object.assign(new Error("panel eksik"), { durum: 400 });
+      if (govde.gorsel) {
+        const g = govde.gorsel;
+        if (g.tur !== "image/jpeg" || !/^[A-Za-z0-9+/]+=*$/.test(g.veri) || g.veri.length > 3_000_000) {
+          throw Object.assign(new Error("Fotoğraf okunamadı."), { durum: 400 });
+        }
+        return { yanit: `FOTOĞRAF İNCELENDİ (${Math.round(g.veri.length / 1024)} KB, soru: ${govde.soru || "-"}). Etikette 51,2 V yazıyor.` };
+      }
+      if (/dolar|kur/i.test(govde.soru || "")) {
+        return { yanit: "Bugün 1 dolar yaklaşık 41 TL.\n\nKaynaklar:\n- [tcmb.gov.tr](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AAA)",
+                 arama: '<div class="chip"><a href="https://www.google.com/search?q=dolar+kuru">dolar kuru bugün</a></div>' };
+      }
       if (/kod yaz/i.test(govde.soru || "")) {
         return { yanit: "İşte örnek:\n```python\ndef topla(a, b):\n    return a + b\n```\nBaşka dil istersen söyle." };
       }

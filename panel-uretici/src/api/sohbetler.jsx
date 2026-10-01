@@ -36,27 +36,28 @@ export function SohbetSaglayici({ children }) {
   const sohbetGuncelle = (id, f) =>
     setDurum((d) => ({ ...d, liste: d.liste.map((s) => (s.id === id ? { ...f(s), guncel: Date.now() } : s)) }));
 
-  const gonder = useCallback(async (metin) => {
+  // gorsel: {tur, veri, onizleme} (api/gorsel.js). Geçmişte yalnızca küçük önizleme saklanır.
+  const gonder = useCallback(async (metin, gorsel = null) => {
     const soru = metin.trim();
-    if (!soru || bekleyen) return;
+    if ((!soru && !gorsel) || bekleyen) return;
     const id = aktif.id;
     const gecmis = aktif.mesajlar;
     sohbetGuncelle(id, (s) => ({
       ...s,
-      baslik: s.mesajlar.length ? s.baslik : soru.slice(0, 48),
-      mesajlar: [...s.mesajlar, { rol: "kullanici", metin: soru, zaman: Date.now() }],
+      baslik: s.mesajlar.length ? s.baslik : (soru || "Fotoğraf").slice(0, 48),
+      mesajlar: [...s.mesajlar, { rol: "kullanici", metin: soru, zaman: Date.now(), ...(gorsel ? { gorsel: gorsel.onizleme } : {}) }],
     }));
     setBekleyen(id);
     // soruSor {metin, kaynak} döndürür; kaynak ("yerel" | "model") dil modeline giden
     // geçmişten veri yanıtlarını ayıklamak için saklanır.
     let yanit;
     try {
-      yanit = await soruSor(soru, gecmis);
+      yanit = await soruSor(soru, gecmis, { gorsel });
     } catch (e) {
       yanit = { metin: `Yanıt oluşturulamadı: ${e.message}`, kaynak: "yerel" };
     }
     if (typeof yanit === "string") yanit = { metin: yanit, kaynak: "yerel" };
-    sohbetGuncelle(id, (s) => ({ ...s, mesajlar: [...s.mesajlar, { rol: "asistan", metin: yanit.metin, kaynak: yanit.kaynak, zaman: Date.now() }] }));
+    sohbetGuncelle(id, (s) => ({ ...s, mesajlar: [...s.mesajlar, { rol: "asistan", metin: yanit.metin, kaynak: yanit.kaynak, zaman: Date.now(), ...(yanit.arama ? { arama: yanit.arama } : {}) }] }));
     setBekleyen(null);
   }, [aktif, bekleyen]);
 

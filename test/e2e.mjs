@@ -143,6 +143,9 @@ try {
       && !(await s.getByText("VERİ SIZDI").count()));
     await sor("ya üretim değilde sohbet etmek istiyorum");
     kontrol(`${on}: "üretim değil de sohbet" dil modeline gitti`, await s.getByText("(uretici, geçmiş 4)").first().isVisible());
+    await s.locator('input[type="file"]').setInputFiles(join(kok, "panel-uretici/public/ikon-512.png"));
+    await sor("bu akünün etiketi ne diyor");
+    kontrol(`${on}: fotoğraf incelendi`, await s.getByText(/FOTOĞRAF İNCELENDİ/).first().isVisible());
     await sor("bana hesap makinesi için kod yaz");
     kontrol(`${on}: kod bloğu gösterildi`, (await s.locator("pre").last().innerText()).includes("def topla(a, b):\n    return a + b"));
     await tasmaYok(s, `${on} asistan`);
@@ -188,6 +191,26 @@ try {
     await s.keyboard.press("Enter");
     await bekle(s, 1500);
     kontrol(`${on}: günlük sınır mesajı gösterildi`, await s.getByText("Bugünkü soru hakkınız doldu").first().isVisible());
+    await s.locator('input[type="file"]').setInputFiles(join(kok, "panel-musteri/public/ikon-512.png"));
+    await s.getByAltText("Eklenen fotoğraf").waitFor({ timeout: 5000 }).catch(() => {});
+    kontrol(`${on}: fotoğraf önizlemesi ve gizlilik notu`, await s.getByAltText("Eklenen fotoğraf").isVisible()
+      && await s.getByText(/Google Gemini\) gönderilir/).isVisible());
+    await s.getByRole("textbox").last().fill("akümün garantisi bu fotoğrafta görünüyor mu");
+    await s.keyboard.press("Enter"); await bekle(s, 1800);
+    kontrol(`${on}: fotoğraflı soru (veri kelimesi olsa da) dil modeline JPEG olarak gitti`,
+      await s.getByText(/FOTOĞRAF İNCELENDİ \(\d+ KB, soru: akümün garantisi/).first().isVisible());
+    kontrol(`${on}: gönderilen fotoğraf sohbette görünüyor, önizleme temizlendi`,
+      await s.getByAltText("Gönderilen fotoğraf").first().isVisible() && !(await s.getByAltText("Eklenen fotoğraf").count()));
+    await s.locator('input[type="file"]').setInputFiles(join(kok, "panel-musteri/public/ikon-192.png"));
+    await bekle(s, 400);
+    await s.getByRole("button", { name: "Gönder" }).click(); await bekle(s, 1800);
+    kontrol(`${on}: yalnızca fotoğraf (soru boş) gönderilebildi`, await s.getByText(/FOTOĞRAF İNCELENDİ \(\d+ KB, soru: -\)/).first().isVisible());
+    await s.getByRole("textbox").last().fill("bugün dolar kuru ne kadar");
+    await s.keyboard.press("Enter"); await bekle(s, 1800);
+    kontrol(`${on}: web kaynağı başlığıyla, yeni sekmede`,
+      (await s.locator('main a[target="_blank"]', { hasText: "tcmb.gov.tr" }).getAttribute("href")).includes("grounding-api-redirect"));
+    kontrol(`${on}: Google arama önerileri yalıtılmış çerçevede`,
+      (await s.locator('iframe[title="Google arama önerileri"]').getAttribute("sandbox")) === "allow-popups allow-popups-to-escape-sandbox");
     kontrol(`${on}: sohbette NaN/undefined yok`, !/NaN|undefined/.test(await s.locator("main").innerText()));
     await foto(s, `${on}-05-sohbet`); await tasmaYok(s, `${on} sohbet`);
 
