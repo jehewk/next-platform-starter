@@ -45,32 +45,18 @@ hata diğerinde de düzeltilmeli. Mimari ve yayın: kök `YAYIN.md`.
   backend şeklinde yanıt verir; yeni uç eklersen oraya da ekle.
 - Backend zamanı UTC ama `Z` eki yok: her zaman `utcTarih()` ile oku.
 
-## Sohbet asistanı (dil modeli)
+## Sohbet asistanı
 
-- İstemci: `src/api/asistan.js` (iki uygulamada da). `VITE_ASISTAN_YOLU=/de/asistan`
-  tanımlıysa soru + son 12 mesaj + `baglam` (kullanıcının KENDİ verisinin kısa özeti,
-  `baglamOlustur`) + `panel` gönderilir. 429/504'te sunucunun mesajı gösterilir;
-  diğer hatalarda yerel motor (`yanitla`) yanıtlar.
-- Sunucu: `aws/ekler/asistan/dennis_asistan.py` Lambda katmanında. Sağlayıcı
-  `ASISTAN_SAGLAYICI`: `bedrock` (varsayılan; boto3 Converse, `eu.amazon.nova-lite-v1:0`,
-  web araması yok) ya da `anthropic` (Anthropic SDK katmanda, `claude-haiku-4-5`, web
-  araması). Ana Lambda'ya yalnızca yönlendirme eklenir (`aws/ekler/yamala.py`, yama E).
-  Kişi başı ve toplam günlük soru sınırı DynamoDB `dennis-asistan-kota` tablosunda;
-  sayaç çalışmazsa uç kapalı kalır.
-- Kurulum/güncelleme: `aws/asistan-kur.ps1` (katmanı Lambda'nın Python sürümü ve
-  mimarisi için derler; modül değişince yeni katman sürümü yayımlar).
-- Test: `test/sahte-api.mjs` `/de/asistan` bağlamı yansıtır; e2e kalın yazı, kaynak
-  bağlantısı ve günlük sınır mesajını denetler.
-
-## Doğrulama
-
-```bash
-(cd panel-uretici && npx vite build && npx oxlint)
-(cd panel-musteri && npx vite build && npx oxlint)
-node test/e2e.mjs <ekran-klasoru>   # iki uygulama, sahte API, masaüstü + 390 px
-```
-
-`e2e.mjs` giriş formunu kaptcha dahil doldurur, işlemleri (yeni müşteri, garanti
-kararı, destek talebi, kayıt) gerçekten yapar ve JS hatası, yatay taşma, ekranda
-"NaN/undefined" arar. Değişen ekranın görüntüsüne mutlaka bak — "derlendi" ≠
-"çalışıyor" (DEVIR §8).
+- Akış (`src/api/asistan.js`, iki uygulamada): önce `ayristirici.js` (`ureticiNiyeti` /
+  `musteriNiyeti`) soruyu niyete çevirir; niyet varsa yanıt yerel veriden (`yanitla`).
+  Yoksa soru `/de/asistan`'a gider — yalnızca soru metni ve `modelGecmisi` (kaynak
+  "yerel" olan yanıtlar ve onların soruları çıkarılır). `soruSor` `{metin, kaynak}` döner;
+  `sohbetler.jsx` kaynağı saklar. Veri (baglam) GÖNDERİLMEZ; sahte API gelirse 400 verir.
+- `ayristirici.js` iki uygulamada aynı dosyadır; değişiklik ikisine de kopyalanır.
+  Yeni ifade eklerken `K` / `M` kök listelerine ekleyin; bilgi/tavsiye soruları `BILGI`
+  ile dil modeline bırakılır. Panelde müşteri/iletişim/kayıt geçen soru her zaman veridir.
+- Sunucu: `aws/ekler/asistan/dennis_asistan.py` (Lambda katmanı). `ASISTAN_SAGLAYICI`:
+  `gemini` (urllib, GEMINI_API_KEY), `bedrock` (boto3 Converse), `anthropic` (SDK katmanda).
+  Ana Lambda'ya yalnızca yönlendirme (yamala.py, yama E). Günlük sınır `dennis-asistan-kota`.
+- Kurulum/teşhis: `aws/asistan-kur.ps1`, `aws/asistan-teshis.ps1`.
+- Test: e2e yerel/genel ayrımını, "bugün kayıt olanlar"ı ve veri sızmamasını denetler.

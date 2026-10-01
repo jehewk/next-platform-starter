@@ -42,6 +42,9 @@ if (-not (& $deger "ASISTAN_KOTA_TABLOSU")) { Sorun "ASISTAN_KOTA_TABLOSU tanım
 if ($saglayici -eq "anthropic") {
   if (& $deger "ANTHROPIC_API_KEY") { Tamam "ANTHROPIC_API_KEY tanımlı (değer gösterilmez)" } else { Sorun "ANTHROPIC_API_KEY tanımsız" }
 }
+if ($saglayici -eq "gemini") {
+  if (& $deger "GEMINI_API_KEY") { Tamam "GEMINI_API_KEY tanımlı (değer gösterilmez)" } else { Sorun "GEMINI_API_KEY tanımsız" }
+}
 
 # ── 2) Canlı kod ──────────────────────────────────────────────────────────
 Adim "2/4 Canlı kod"

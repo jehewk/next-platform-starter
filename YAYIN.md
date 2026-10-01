@@ -125,28 +125,33 @@ CloudFront reddinde Amplify'a geçiş).
 
 ## Sohbet asistanı (her soruya yanıt)
 
-`aws\asistan-kur.ps1` sohbeti bir dil modeline bağlar: veri ya da cihaz olmasa da her
-konuda yanıt verir, kullanıcının kendi sistem özetini bilir. Varsayılan: **Amazon
-Bedrock, Amazon Nova Lite** — API anahtarı gerekmez, fatura AWS'ye gelir.
+İki katman:
+
+1. **Ayrıştırıcı** (`src/api/ayristirici.js`, iki uygulamada): sistem verisiyle ilgili
+   sorular serbest Türkçeyle sorulsa da tanınır ve **gerçek veriden, tarayıcıda**
+   yanıtlanır. Örnekler: "dostum bugün kayıt olan kullanıcıları ver", "Ahmet'in adresi",
+   "Adana'daki müşteriler", "arızalı cihazlar", "akümde ne kadar enerji var". Ücretsiz;
+   veri hiçbir dış servise gitmez.
+2. **Dil modeli** (`aws\asistan-kur.ps1`): genel sorular ("selam", "LiFePO4 nedir",
+   "akü kışın nasıl korunur"). **Yalnızca soru metni** gider; veriden üretilmiş yanıtlar
+   konuşma geçmişinden de çıkarılır.
 
 ```powershell
-.\asistan-kur.ps1                                     # Nova Lite (~0,03 cent/soru)
-.\asistan-kur.ps1 -Model eu.amazon.nova-2-lite-v1:0   # Türkçesi daha iyi (~0,25 cent)
-.\asistan-kur.ps1 -Saglayici anthropic                # Claude Haiku 4.5 + web araması (~0,5-1 cent)
-.\asistan-kur.ps1 -KullaniciGunlukLimit 30 -ToplamGunlukLimit 3000
+.\asistan-kur.ps1 -Saglayici gemini        # Google Gemini, ücretsiz katman (önerilen)
+.\asistan-kur.ps1                          # Amazon Bedrock Nova Lite (~0,03 cent/soru; hesap doğrulaması gerekir)
+.\asistan-kur.ps1 -Saglayici anthropic     # Claude Haiku 4.5 (+ web araması; kredi gerekir)
+.\asistan-teshis.ps1                       # yanıt gelmiyorsa: zinciri denetler, hiçbir şeyi değiştirmez
 ```
 
-| Model | Soru başı | 100 kişi × 20 soru/gün, aylık en fazla |
-|---|---|---|
-| Nova Lite (varsayılan) | ~0,03 cent | ~18 USD |
-| Nova 2 Lite | ~0,25 cent | ~150 USD |
-| Claude Haiku 4.5 | ~0,5-1 cent | ~300+ USD |
+**Gemini:** aistudio.google.com > Get API key (Google hesabı yeter, kart istemez).
+Betik anahtarı sorar (kopyalayıp yalnızca Enter), erişilebilen modelleri listeler ve en
+yeni "flash-lite"ı seçer. Ücretsiz katman dakikada ~10-15, günde ~1000 istek; toplam
+günlük sınır 900 tutulur. Ücretsiz katmanda sorular Google'ın ürün geliştirmesinde
+kullanılabilir — gizlilik metninde belirtin (müşteri verisi gönderilmez).
 
-Nova'da web araması yoktur; güncel bilgi isteyen sorularda asistan bilgisinin eski
-olabileceğini söyler. Betik "modele erişimi yok" derse: AWS konsolu > Amazon Bedrock >
-Model access (eu-central-1) bölümünden Amazon Nova modellerini açıp tekrar çalıştırın.
-Kişi başı (20) ve toplam (2000) günlük soru sınırı vardır; sayaç çalışmazsa asistan
-kapalı kalır.
+Kişi başı (20) ve toplam günlük soru sınırı vardır; sayaç çalışmazsa asistan kapalı
+kalır. Dil modeline ulaşılamazsa uygulama ayrıştırıcının yapabildiklerini ve nedeni
+gösterir.
 
 ## Maliyet koruması
 

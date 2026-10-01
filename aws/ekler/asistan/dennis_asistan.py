@@ -9,6 +9,11 @@ Sağlayıcı (ASISTAN_SAGLAYICI):
             Web araması yok.
   anthropic Claude (Anthropic SDK katmanda olmalı, ANTHROPIC_API_KEY gerekir);
             web araması yapabilir.
+  gemini    Google Gemini API (ücretsiz katman; GEMINI_API_KEY). Python'un kendi
+            urllib'i yeter. Web araması yok.
+
+Uygulamalar sistem verisini GÖNDERMEZ: veri soruları tarayıcıdaki ayrıştırıcıda
+yanıtlanır (ayristirici.js); buraya yalnızca genel sorular gelir.
 Ana Lambda her isteği önce oturum için doğrular (oturumsuz → 401); buraya
 yalnızca giriş yapmış kullanıcılar ulaşır.
 
@@ -32,6 +37,11 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 
+import socket
+import urllib.error
+import urllib.parse
+import urllib.request
+
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError, ConnectTimeoutError, ReadTimeoutError
@@ -41,7 +51,8 @@ MAKS_BAGLAM = 6000
 MAKS_GECMIS = 12          # mesaj
 MAKS_MESAJ = 4000
 MAKS_CIKTI = 2048         # token; telefonda okunacak kısa yanıtlar
-VARSAYILAN_MODEL = {"bedrock": "eu.amazon.nova-lite-v1:0", "anthropic": "claude-haiku-4-5"}
+VARSAYILAN_MODEL = {"bedrock": "eu.amazon.nova-lite-v1:0", "anthropic": "claude-haiku-4-5",
+                    "gemini": "gemini-flash-lite-latest"}
 SURE = 24.0               # sn; API Gateway 29 sn'de keser
 TR_SAATI = timezone(timedelta(hours=3))
 
@@ -49,7 +60,7 @@ SISTEM_MUSTERI = """Sen Dennis Energy'nin müşteri asistanısın. Dennis Energy
 
 Her konuda soru sorabilir: kendi sistemi, güneş enerjisi, aküler, elektrik tüketimi, faturalar, genel bilgi ya da tamamen başka konular. Hepsine elinden geldiğince yardımcı ol.
 
-Kullanıcının kendi sistem verisi <sistem_verisi> etiketinde gelebilir. Sistemiyle ilgili sorularda yalnızca bu veriye dayan; veri yoksa ya da henüz cihazı yoksa bunu kısaca söyle ve genel bilgiyle yardımcı ol. Ölçüm, tarih ya da garanti bilgisi uydurma.
+Kullanıcının sistem verisi <sistem_verisi> etiketinde gelebilir; gelmediyse ona erişimin yoktur. Kendi sistemiyle ilgili (şarj, üretim, garanti, destek talebi) bir şey sorarsa ölçüm, tarih ya da garanti bilgisi uydurma; bunu sohbette "Akümde ne kadar enerji var?", "Bugün ne kadar ürettim?", "Garantim ne zaman bitiyor?" gibi sorarak öğrenebileceğini söyle.
 
 {GUNCEL}
 
@@ -63,7 +74,7 @@ SISTEM_URETICI = """Sen Dennis Energy üretici panelinin asistanısın. Dennis E
 
 Her konuda soru sorabilir: panel verisi, LiFePO4 hücre kimyası, BMS, SOC/SOH, hücre dengeleme, inverter ve güneş sistemleri, standartlar ve sertifikasyon (ör. IEC 62619, UN 38.3), üretim ve kalite kontrol, garanti analizi, iş, hukuk, pazar ya da tamamen başka konular. Teknik dil kullanabilirsin.
 
-Panelin özet verisi <sistem_verisi> etiketinde gelebilir. Sistemle ilgili sorularda yalnızca bu veriye dayan; özet soruyu yanıtlamaya yetmiyorsa bunu söyle ve panelde hangi sayfaya bakılacağını öner. Sayı, seri numarası ya da tarih uydurma.
+Panel verisi <sistem_verisi> etiketinde gelebilir; gelmediyse ona erişimin yoktur. Müşteri, cihaz, arıza, garanti ya da başvuru kaydıyla ilgili bir şey sorulursa sayı, isim, seri numarası ya da tarih uydurma; bunu sohbette "bugün kayıt olan müşteriler", "Ahmet'in adresi", "arızalı cihazlar", "AKU-D24-0071" gibi sorarak öğrenebileceğini ya da paneldeki ilgili sayfayı söyle.
 
 {GUNCEL}
 
@@ -257,6 +268,70 @@ def _bedrock_yanitla(model, sistem, mesajlar):
     return 200, {"yanit": metin}
 
 
+def _gemini_yanitla(model, sistem, mesajlar):
+    """Google Gemini generateContent (REST). Mesajlar Anthropic biçiminden çevrilir."""
+    icerik = []
+    for m in mesajlar:
+        parcalar = [m["content"]] if isinstance(m["content"], str) else [b["text"] for b in m["content"]]
+        rol = "model" if m["role"] == "assistant" else "user"
+        p = [{"text": x} for x in parcalar if x]
+        if icerik and icerik[-1]["role"] == rol:
+            icerik[-1]["parts"].extend(p)
+        else:
+            icerik.append({"role": rol, "parts": p})
+    govde = {
+        "systemInstruction": {"parts": [{"text": sistem}]},
+        "contents": icerik,
+        "generationConfig": {"maxOutputTokens": MAKS_CIKTI, "temperature": 0.5},
+    }
+    model = model[len("models/"):] if model.startswith("models/") else model
+    istek = urllib.request.Request(
+        f"{os.environ.get('GEMINI_TABAN', 'https://generativelanguage.googleapis.com')}"
+        f"/v1beta/models/{urllib.parse.quote(model)}:generateContent",
+        data=json.dumps(govde).encode("utf-8"), method="POST",
+        headers={"Content-Type": "application/json", "x-goog-api-key": os.environ.get("GEMINI_API_KEY", "")})
+    try:
+        with urllib.request.urlopen(istek, timeout=SURE) as yanit:
+            y = json.loads(yanit.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            hata = json.loads(e.read().decode("utf-8")).get("error", {})
+        except Exception:
+            hata = {}
+        mesaj = str(hata.get("message", ""))
+        print(f"asistan gemini hatasi {e.code} {hata.get('status', '')}: {mesaj}")
+        if e.code == 429:
+            return 429, {"hata": "Asistanın ücretsiz kullanım sınırı şu an dolu; biraz sonra tekrar deneyin."}
+        if "location" in mesaj.lower():
+            return 502, {"hata": "Gemini bu bölgeden kullanılamıyor."}
+        if e.code in (401, 403) or "API_KEY" in mesaj or "API key" in mesaj:
+            return 503, {"hata": "Asistan şu an kullanılamıyor (Gemini anahtarı)."}
+        if e.code == 404:
+            return 502, {"hata": "Asistan modeli bulunamadı (ASISTAN_MODEL)."}
+        return 502, {"hata": f"Asistan şu an yanıt veremiyor (Gemini {e.code})."}
+    except (urllib.error.URLError, socket.timeout, TimeoutError) as e:
+        print(f"asistan gemini baglanti hatasi: {e}")
+        if "timed out" in str(e).lower() or isinstance(e, (socket.timeout, TimeoutError)):
+            return 504, {"hata": "Yanıt çok uzun sürdü; soruyu kısaltıp tekrar deneyin."}
+        return 502, {"hata": "Asistana ulaşılamadı; biraz sonra tekrar deneyin."}
+
+    aday = (y.get("candidates") or [{}])[0]
+    durum = aday.get("finishReason")
+    kullanim = y.get("usageMetadata") or {}
+    print(json.dumps({"asistan": {"model": model, "girdi": kullanim.get("promptTokenCount"),
+                                  "cikti": kullanim.get("candidatesTokenCount"), "arama": 0, "durum": durum}}))
+    metin = "".join(p.get("text", "") for p in ((aday.get("content") or {}).get("parts") or [])
+                    if not p.get("thought")).strip()
+    engel = (y.get("promptFeedback") or {}).get("blockReason")
+    if not metin and (engel or durum in ("SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION")):
+        return 200, {"yanit": "Bu soruya yanıt veremiyorum. Başka bir konuda yardımcı olabilirim."}
+    if not metin:
+        return 502, {"hata": "Asistan şu an yanıt veremiyor."}
+    if durum == "MAX_TOKENS":
+        metin += " …"
+    return 200, {"yanit": metin}
+
+
 def yanitla(body, event, dynamodb):
     """Döner: (http_kodu, gövde)."""
     body = body if isinstance(body, dict) else {}
@@ -268,6 +343,8 @@ def yanitla(body, event, dynamodb):
         return 503, {"hata": "Asistan henüz yapılandırılmadı."}
     if saglayici == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
         return 503, {"hata": "Asistan henüz yapılandırılmadı."}
+    if saglayici == "gemini" and not os.environ.get("GEMINI_API_KEY"):
+        return 503, {"hata": "Asistan henüz yapılandırılmadı."}
     engel = _kota(dynamodb, _kullanici(event))
     if engel:
         return engel[0], {"hata": engel[1]}
@@ -275,6 +352,8 @@ def yanitla(body, event, dynamodb):
     model = _ayar("ASISTAN_MODEL", VARSAYILAN_MODEL[saglayici])
     if saglayici == "bedrock":
         return _bedrock_yanitla(model, _sistem(body.get("panel"), False), mesajlar)
+    if saglayici == "gemini":
+        return _gemini_yanitla(model, _sistem(body.get("panel"), False), mesajlar)
     return _anthropic_yanitla(model, _sistem(body.get("panel"), int(_ayar("ASISTAN_WEB_ARAMA", "3")) > 0), mesajlar)
 
 

@@ -39,7 +39,7 @@
 #>
 [CmdletBinding()]
 param(
-  [ValidateSet("bedrock", "anthropic")][string]$Saglayici = "bedrock",
+  [ValidateSet("bedrock", "anthropic", "gemini")][string]$Saglayici = "bedrock",
   [string]$Model,
   [ValidateSet("low", "medium", "high")][string]$Efor = "low",
   [ValidateRange(1, 10000)][int]$KullaniciGunlukLimit = 20,
@@ -60,7 +60,10 @@ $SDK_SURUMU   = "1.9.0"                      # sınanan Anthropic Python SDK sü
 $KATMAN       = "dennis-asistan"
 $KOTA_TABLOSU = "dennis-asistan-kota"
 $MODUL        = Join-Path (Join-Path (Join-Path $PSScriptRoot "ekler") "asistan") "dennis_asistan.py"
-if (-not $Model) { $Model = @{ bedrock = "eu.amazon.nova-lite-v1:0"; anthropic = "claude-haiku-4-5" }[$Saglayici] }
+if (-not $Model) { $Model = @{ bedrock = "eu.amazon.nova-lite-v1:0"; anthropic = "claude-haiku-4-5"; gemini = "" }[$Saglayici] }
+# Gemini ücretsiz katmanı günde ~1000 istekle sınırlı: toplam sınır onun altında tutulur
+if ($Saglayici -eq "gemini" -and -not $PSBoundParameters.ContainsKey("ToplamGunlukLimit")) { $ToplamGunlukLimit = 900 }
+$GEMINI_TABAN = if ($env:GEMINI_TABAN) { $env:GEMINI_TABAN } else { "https://generativelanguage.googleapis.com" }
 $ortakParam = @{ Bolge = $Bolge }
 if ($Profil) { $ortakParam.Profil = $Profil }
 
@@ -68,6 +71,44 @@ if ($Profil) { $ortakParam.Profil = $Profil }
 function AnahtarTemizle([string]$a) {
   if (-not $a) { return "" }
   return (($a -replace '[\x00-\x20\x7F\uFEFF\u200B]', '') -replace '^["'']+|["'']+$', '')
+}
+
+# Gizli girişten ya da (Ctrl+V yapışmazsa) panodan anahtar okur; $onEk ile başlamalı.
+function AnahtarOku([string]$onEk, [string]$ortamAdi) {
+  $a = $null
+  if ($ortamAdi -and (Get-Item "Env:$ortamAdi" -ErrorAction SilentlyContinue)) {
+    $a = (Get-Item "Env:$ortamAdi").Value; Bilgi "bu bilgisayardaki $ortamAdi kullanılıyor"
+  } else {
+    Bilgi "Anahtarı KOPYALAYIN (Ctrl+C), sonra burada yalnızca Enter'a basın (sağ tıkla yapıştırmak da olur)."
+    $guvenli = Read-Host "  API anahtarı (ekranda görünmez)" -AsSecureString
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($guvenli)
+    try { $a = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+    if ((AnahtarTemizle $a) -notmatch "^$onEk") {
+      $pano = $null
+      try { $pano = (Get-Clipboard -Raw -ErrorAction Stop) } catch { }
+      if ((AnahtarTemizle $pano) -match "^$onEk") {
+        $a = $pano; Bilgi "anahtar panodan okundu"
+        try { Set-Clipboard -Value " " } catch { }   # anahtar panoda kalmasın
+      }
+    }
+  }
+  $a = AnahtarTemizle $a
+  if ($a -notmatch "^$onEk") {
+    $ipucu = if (-not $a) { "hiçbir şey alınmadı" } else { "$($a.Length) karakter alındı, başı '$onEk' değil" }
+    throw "Anahtar okunamadı ($ipucu). Anahtarı kopyalayıp (Ctrl+C) betiği yeniden çalıştırın ve soruda yalnızca Enter'a basın."
+  }
+  return $a
+}
+
+# Gemini REST hatasından durum kodu ve mesaj (Windows PowerShell 5.1 ve 7)
+function GeminiHatasi($hata) {
+  $kod = 0
+  try { $kod = [int]$hata.Exception.Response.StatusCode } catch { }
+  $mesaj = "$($hata.ErrorDetails.Message)"
+  try { $j = $mesaj | ConvertFrom-Json; $mesaj = "$($j.error.status): $($j.error.message)" } catch { }
+  if (-not $mesaj) { $mesaj = $hata.Exception.Message }
+  return @{ Kod = $kod; Mesaj = $mesaj }
 }
 
 function PyCalistir([string[]]$argumanlar) {
@@ -89,24 +130,29 @@ $pySurum = $Matches[1]
 $mimari = if (@($yap.Architectures) -contains "arm64") { "arm64" } else { "x86_64" }
 $platform = if ($mimari -eq "arm64") { "manylinux2014_aarch64" } else { "manylinux2014_x86_64" }
 $anahtarVar = [bool]($yap.Environment -and $yap.Environment.Variables -and $yap.Environment.Variables.PSObject.Properties["ANTHROPIC_API_KEY"])
+$geminiMevcut = if ($yap.Environment -and $yap.Environment.Variables -and $yap.Environment.Variables.PSObject.Properties["GEMINI_API_KEY"]) {
+  $yap.Environment.Variables.PSObject.Properties["GEMINI_API_KEY"].Value } else { $null }
 Tamam "Lambda: python$pySurum, $mimari, zaman aşımı $($yap.Timeout) sn, bellek $($yap.MemorySize) MB"
 
 # Soru başına yaklaşık maliyet (USD; ~3000 girdi + ~400 çıktı token)
-$soruBasi = switch -Wildcard ($Model) {
+$soruBasi = if ($Saglayici -eq "gemini") { 0 } else { switch -Wildcard ($Model) {
   "*nova-micro*" { 0.0002 } "*nova-lite*" { 0.0003 } "*nova-2-lite*" { 0.0025 }
   "claude-haiku*" { 0.007 } "claude-sonnet*" { 0.015 } "claude-opus*" { 0.03 } default { 0.01 }
-}
+} }
 if ($Model -like "*nova-2-lite*") { $soruBasi = 0.0025 }
 $aylikEnFazla = [math]::Round($ToplamGunlukLimit * $soruBasi * 30, 1)
 Write-Host "`nYapılacaklar:" -ForegroundColor White
 if ($Saglayici -eq "bedrock") { Bilgi "1. Amazon Bedrock: Lambda'ya $Model çağırma izni + deneme çağrısı (anahtar gerekmez)" }
+elseif ($Saglayici -eq "gemini") { Bilgi ("1. Google Gemini anahtarı (ücretsiz) " + $(if ($geminiMevcut -and -not $AnahtarYenile) { "(zaten tanımlı; değiştirmek için -AnahtarYenile)" } else { "sorulacak" }) + ", model " + $(if ($Model) { $Model } else { "otomatik seçilecek (en yeni flash-lite)" })) }
 else { Bilgi ("1. Anthropic API anahtarı " + $(if ($anahtarVar -and -not $AnahtarYenile) { "(zaten tanımlı; değiştirmek için -AnahtarYenile)" } else { "sorulacak" })) }
 Bilgi "2. Günlük soru sayacı: kişi başı $KullaniciGunlukLimit, toplam $ToplamGunlukLimit soru/gün"
 Bilgi ("3. Lambda katmanı $KATMAN (" + $(if ($Saglayici -eq "anthropic") { "Anthropic SDK $SDK_SURUMU + " }) + "asistan modülü)")
 if ($Saglayici -eq "bedrock") { Bilgi "4. Model $Model (web araması yok)" }
+elseif ($Saglayici -eq "gemini") { Bilgi "4. Google Gemini ücretsiz katman: dakikada ~10-15, günde ~1000 istek; web araması yok" }
 else { Bilgi ("4. Model $Model" + $(if ($Model -notlike "claude-haiku*") { ", efor $Efor" }) + ", web araması soru başına en fazla $WebArama") }
 Bilgi "5. Lambda yaması (/de/asistan) ve iki uygulamanın yeniden yayını"
-Bilgi "En kötü durumda (her gün sınır dolarsa) aylık ~$aylikEnFazla USD. Gerçek kullanım genelde çok daha az."
+if ($Saglayici -eq "gemini") { Bilgi "Ücret yok (ücretsiz katman). Not: ücretsiz katmanda sorular Google'ın ürün geliştirmesinde kullanılabilir; uygulamalar müşteri verisini göndermez." }
+else { Bilgi "En kötü durumda (her gün sınır dolarsa) aylık ~$aylikEnFazla USD. Gerçek kullanım genelde çok daha az." }
 if (-not $Onayla) {
   $cevap = Read-Host "`nDevam edilsin mi? (E/H)"
   if ($cevap -notmatch '^[EeYy]') { Write-Host "İptal edildi."; exit 0 }
@@ -144,6 +190,45 @@ if ($Saglayici -eq "bedrock") {
     if ($h -match 'model identifier is invalid') { throw "Model kimliği geçersiz ya da bu bölgede yok: $Model ($h)" }
     throw
   }
+} elseif ($Saglayici -eq "gemini") {
+  Adim "1/6 Google Gemini (ücretsiz katman)"
+  $gAnahtar = $geminiMevcut
+  if (-not $gAnahtar -or $AnahtarYenile) {
+    Bilgi "aistudio.google.com > Get API key > Create API key (Google hesabı yeter, kart istemez; AIza ile başlar)."
+    $gAnahtar = AnahtarOku "AIza" "GEMINI_API_KEY"
+    $yeniGemini = $gAnahtar
+  } else { Tamam "anahtar Lambda'da tanımlı (değer gösterilmez)" }
+  $baslik = @{ "x-goog-api-key" = $gAnahtar }
+  try { $liste = Invoke-RestMethod -Uri "$GEMINI_TABAN/v1beta/models?pageSize=1000" -Headers $baslik -TimeoutSec 30 }
+  catch {
+    $h = GeminiHatasi $_
+    if ($h.Mesaj -match "location") { throw "Gemini API bu konumdan kullanılamıyor: $($h.Mesaj)" }
+    throw "Gemini anahtarı doğrulanamadı ($($h.Kod)): $($h.Mesaj)"
+  }
+  $uygun = @($liste.models | Where-Object { @($_.supportedGenerationMethods) -contains "generateContent" -and
+    $_.name -match "flash" -and $_.name -notmatch "preview|exp|tts|image|live|audio|embed|thinking|learnlm|latest" })
+  if ($Model) {
+    if (-not (@($liste.models.name) -contains "models/$Model")) { throw "$Model bu anahtarla kullanılamıyor. Kullanılabilir flash modelleri: $((@($uygun.name) -replace '^models/', '') -join ', ')" }
+  } else {
+    # En yeni flash-lite; yoksa en yeni flash
+    $secim = $uygun | Sort-Object @{ Expression = { [int]($_.name -match "lite") }; Descending = $true },
+      @{ Expression = { [double]([regex]::Match($_.name, 'gemini-(\d+(\.\d+)?)').Groups[1].Value) }; Descending = $true } | Select-Object -First 1
+    if (-not $secim) { throw "Bu anahtarla kullanılabilir bir Gemini flash modeli bulunamadı." }
+    $Model = $secim.name -replace '^models/', ''
+  }
+  Tamam "anahtar geçerli; model: $Model"
+  $govde = @{ contents = @(@{ role = "user"; parts = @(@{ text = "Merhaba! Tek kelimeyle yanıt ver." }) }); generationConfig = @{ maxOutputTokens = 20 } } | ConvertTo-Json -Depth 8
+  try {
+    $d = Invoke-RestMethod -Method Post -Uri "$GEMINI_TABAN/v1beta/models/${Model}:generateContent" -Headers $baslik `
+      -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($govde)) -TimeoutSec 30
+    Tamam ("deneme yanıtı: " + ((@($d.candidates[0].content.parts | ForEach-Object { $_.text }) -join "" -replace '\s+', ' ').Trim()))
+  } catch {
+    $h = GeminiHatasi $_
+    if ($h.Kod -eq 429) { Uyari "ücretsiz kota şu an dolu ($($h.Mesaj)); kurulum sürüyor, biraz sonra çalışır." }
+    elseif ($h.Mesaj -match "location") { throw "Gemini API bu konumdan kullanılamıyor: $($h.Mesaj)" }
+    else { throw "Gemini deneme çağrısı başarısız ($($h.Kod)): $($h.Mesaj)" }
+  }
+  $gAnahtar = $null
 } elseif (-not $anahtarVar -or $AnahtarYenile) {
   Adim "1/6 Anthropic API anahtarı"
   Bilgi "console.anthropic.com > API Keys'ten bir anahtar oluşturun (sk-ant- ile başlar)."
@@ -287,8 +372,9 @@ $ortam = @{
   ASISTAN_KULLANICI_LIMIT = "$KullaniciGunlukLimit"; ASISTAN_TOPLAM_LIMIT = "$ToplamGunlukLimit"; ASISTAN_WEB_ARAMA = "$WebArama"
 }
 if ($yeniAnahtar) { $ortam.ANTHROPIC_API_KEY = $yeniAnahtar }
+if ($yeniGemini) { $ortam.GEMINI_API_KEY = $yeniGemini }
 if (LambdaOrtamGuncelle $ortam) { Tamam "ortam değişkenleri güncellendi (diğerleri korundu)" } else { Tamam "ortam değişkenleri güncel" }
-$yeniAnahtar = $null
+$yeniAnahtar = $null; $yeniGemini = $null
 Remove-Item $yerel -Recurse -Force -ErrorAction SilentlyContinue
 
 # ── 5-6) Lambda yaması + uygulamalar ──────────────────────────────────────
