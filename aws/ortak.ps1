@@ -13,6 +13,12 @@ $sabitler = [ordered]@{
 }
 foreach ($k in $sabitler.Keys) { Set-Variable -Name $k -Value $sabitler[$k] -Option ReadOnly -Force }
 
+# Windows PowerShell 5.1 (.NET Framework) bazen TLS 1.2 kuramıyor: "SSL/TLS güvenli kanalı
+# oluşturulamadı". S3/Amplify yükleme adresleri TLS 1.2+ ister; açıkça etkinleştirilir.
+try {
+  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+} catch { }
+
 if (-not $Bolge) { $Bolge = "eu-central-1" }
 if (-not $Profil) { $Profil = $env:AWS_PROFILE }
 
@@ -119,7 +125,16 @@ function AmplifyYayinla($appId, $dist, $dal = "main") {
   $zip = Join-Path ([IO.Path]::GetTempPath()) ("de-amplify-" + [guid]::NewGuid().ToString("N").Substring(0, 8) + ".zip")
   ZipOlustur $dist $zip
   $d = Cagir amplify create-deployment --app-id $appId --branch-name $dal
-  Invoke-WebRequest -Method Put -Uri $d.zipUploadUrl -InFile $zip -ContentType "application/zip" -UseBasicParsing | Out-Null
+  for ($deneme = 1; ; $deneme++) {
+    try {
+      Invoke-WebRequest -Method Put -Uri $d.zipUploadUrl -InFile $zip -ContentType "application/zip" -UseBasicParsing | Out-Null
+      break
+    } catch {
+      if ($deneme -ge 3) { throw "Amplify'a yükleme 3 denemede başarısız: $($_.Exception.Message)" }
+      Uyari "yükleme kesildi ($($_.Exception.Message)); $deneme. tekrar deneniyor..."
+      Start-Sleep -Seconds (5 * $deneme)
+    }
+  }
   Remove-Item $zip -ErrorAction SilentlyContinue
   Cagir amplify start-deployment --app-id $appId --branch-name $dal --job-id $d.jobId | Out-Null
   $son = (Get-Date).AddMinutes(10)
