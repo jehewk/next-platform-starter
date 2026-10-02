@@ -153,9 +153,16 @@ function GeminiAnahtariOku {
 function GeminiHatasi($hata) {
   $kod = 0
   try { $kod = [int]$hata.Exception.Response.StatusCode } catch { }
-  $mesaj = "$($hata.ErrorDetails.Message)"
-  try { $j = $mesaj | ConvertFrom-Json; $mesaj = "$($j.error.status): $($j.error.message)" } catch { }
-  if (-not $mesaj) { $mesaj = $hata.Exception.Message }
+  $mesaj = "$($hata.ErrorDetails.Message)".Trim()
+  if ($mesaj) {
+    try { $j = $mesaj | ConvertFrom-Json; if ($j.error) { $mesaj = "$($j.error.status): $($j.error.message)" } } catch { }
+  }
+  if (-not $mesaj) {
+    # Yanıt yoksa (bağlantı/TLS/DNS/vekil) asıl neden iç istisnalarda
+    $e = $hata.Exception; $parcalar = @()
+    while ($e) { if ($e.Message -and $parcalar -notcontains $e.Message) { $parcalar += $e.Message }; $e = $e.InnerException }
+    $mesaj = $parcalar -join " → "
+  }
   return @{ Kod = $kod; Mesaj = $mesaj }
 }
 
@@ -247,11 +254,21 @@ if ($Saglayici -eq "bedrock") {
     $yeniGemini = $gAnahtar
   } else { Tamam "anahtar Lambda'da tanımlı (değer gösterilmez)" }
   $baslik = @{ "x-goog-api-key" = $gAnahtar }
-  try { $liste = Invoke-RestMethod -Uri "$GEMINI_TABAN/v1beta/models?pageSize=1000" -Headers $baslik -TimeoutSec 30 }
-  catch {
-    $h = GeminiHatasi $_
-    if ($h.Mesaj -match "location") { throw "Gemini API bu konumdan kullanılamıyor: $($h.Mesaj)" }
-    throw "Gemini anahtarı doğrulanamadı ($($h.Kod)): $($h.Mesaj)"
+  $liste = $null
+  foreach ($deneme in 1..3) {
+    try { $liste = Invoke-RestMethod -Uri "$GEMINI_TABAN/v1beta/models?pageSize=1000" -Headers $baslik -TimeoutSec 30; break }
+    catch {
+      $h = GeminiHatasi $_
+      if ($h.Kod -eq 0 -and $deneme -lt 3) { Uyari "Google'a bağlanılamadı ($($h.Mesaj)); $($deneme * 5) sn sonra yeniden deneniyor..."; Start-Sleep -Seconds ($deneme * 5); continue }
+      if ($h.Mesaj -match "location") { throw "Gemini API bu konumdan kullanılamıyor: $($h.Mesaj)" }
+      if ($h.Kod -eq 0) {
+        Uyari "Bu bilgisayardan generativelanguage.googleapis.com adresine ulaşılamıyor (anahtar sorunu değil)."
+        Uyari "İnternet bağlantısını, VPN/vekil sunucuyu ve antivirüsün 'HTTPS tarama' özelliğini kontrol edip tekrar deneyin."
+        Uyari "Tarayıcıda şu adres açılıyor mu bakın: https://generativelanguage.googleapis.com  (404 sayfası gelmesi normaldir)"
+        throw "Google Gemini'ye bağlanılamadı: $($h.Mesaj)"
+      }
+      throw "Gemini anahtarı doğrulanamadı ($($h.Kod)): $($h.Mesaj)"
+    }
   }
   $uygun = @($liste.models | Where-Object { @($_.supportedGenerationMethods) -contains "generateContent" -and
     $_.name -match "flash" -and $_.name -notmatch "preview|exp|tts|image|live|audio|embed|thinking|learnlm|latest" })
