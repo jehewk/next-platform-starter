@@ -161,7 +161,7 @@ tarayıcıda 1280 px JPEG'e küçültülüp yalnızca o soruyla gönderilir, sun
 geçmişte yalnızca küçük önizleme kalır. Fotoğraflı soru ayrıştırıcıya girmez, her zaman
 dil modeline gider. Üç sağlayıcı da fotoğraf inceler.
 
-Kişi başı (20) ve toplam günlük soru sınırı vardır; sayaç çalışmazsa asistan kapalı
+Kişi başı (30) ve toplam günlük soru sınırı vardır; sayaç çalışmazsa asistan kapalı
 kalır. Dil modeline ulaşılamazsa uygulama ayrıştırıcının yapabildiklerini ve nedeni
 gösterir.
 

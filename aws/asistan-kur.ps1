@@ -42,7 +42,7 @@ param(
   [ValidateSet("bedrock", "anthropic", "gemini")][string]$Saglayici = "bedrock",
   [string]$Model,
   [ValidateSet("low", "medium", "high")][string]$Efor = "low",
-  [ValidateRange(1, 10000)][int]$KullaniciGunlukLimit = 20,
+  [ValidateRange(1, 10000)][int]$KullaniciGunlukLimit = 30,
   [ValidateRange(1, 1000000)][int]$ToplamGunlukLimit = 2000,
   [ValidateRange(0, 10)][int]$WebArama = 3,
   [switch]$AnahtarYenile,

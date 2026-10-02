@@ -157,7 +157,7 @@ def _kota(dynamodb, kullanici):
     silinme = int(time.time()) + 3 * 86400
     tablo = dynamodb.Table(ad)
     try:
-        if not _sayac(tablo, f"k#{kullanici}#{gun}", int(_ayar("ASISTAN_KULLANICI_LIMIT", "20")), silinme):
+        if not _sayac(tablo, f"k#{kullanici}#{gun}", int(_ayar("ASISTAN_KULLANICI_LIMIT", "30")), silinme):
             return 429, "Bugünkü soru hakkınız doldu; yarın tekrar sorabilirsiniz."
         if not _sayac(tablo, f"toplam#{gun}", int(_ayar("ASISTAN_TOPLAM_LIMIT", "2000")), silinme):
             return 429, "Asistan bugün yoğun; lütfen yarın tekrar deneyin."
