@@ -53,10 +53,25 @@ async function baglam(tarayici, genislik) {
       await route.fulfill({ status: e.durum || 500, headers: cors, contentType: "application/json", body: JSON.stringify({ hata: e.message }) });
     }
   });
-  // Dış kaynaklar (yazı tipi, harita karoları) bu ortamda erişilemez; test dışı.
-  await b.route(/fonts\.(googleapis|gstatic)\.com|basemaps\.cartocdn\.com/, (r) => r.abort());
+  // Dış kaynaklar (yazı tipi) bu ortamda erişilemez; test dışı.
+  await b.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
+  // Uydu altlığı, etiket katmanları ve yağış radarı: tek renkli sahte karolar
+  const karo = (b64) => ({ status: 200, contentType: "image/png", headers: cors, body: Buffer.from(b64, "base64") });
+  await b.route(/server\.arcgisonline\.com\/.*World_Imagery/, (r) => r.fulfill(karo(SAHTE_UYDU)));
+  await b.route(/server\.arcgisonline\.com\/.*Reference/, (r) => r.fulfill(karo(SAHTE_BOS)));
+  await b.route(/api\.rainviewer\.com\/public\/weather-maps\.json/, (r) => r.fulfill({ status: 200, headers: cors,
+    contentType: "application/json", body: JSON.stringify({ host: "https://tilecache.rainviewer.com",
+      radar: { past: [{ time: 1790000000, path: "/v2/radar/1790000000" }, { time: 1790000600, path: "/v2/radar/1790000600" }] } }) }));
+  await b.route(/tilecache\.rainviewer\.com\//, (r) => {
+    radarKarolari.add(new URL(r.request().url()).pathname.split("/")[3]);
+    return r.fulfill(karo(SAHTE_RADAR));
+  });
   return b;
 }
+const SAHTE_UYDU = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPwSrD7DwADyAHoIgni+wAAAABJRU5ErkJggg==";
+const SAHTE_RADAR = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGOwqbjTAwAEoQId21ZpBgAAAABJRU5ErkJggg==";
+const SAHTE_BOS = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=";
+const radarKarolari = new Set();
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "*" };
 
 async function sayfaAc(b, etiket) {
@@ -105,6 +120,18 @@ try {
     await girisYap(s, U, "uretim@dennisenerji.com");
     kontrol(`${on}: demo rozeti yok`, !(await s.getByText("Demo verisi").count()));
     await bekle(s, 1500); await foto(s, `${on}-02-genel`); await tasmaYok(s, `${on} genel`);
+    await s.goto(U + "/harita"); await bekle(s, 2000);
+    kontrol(`${on}: haritada künye/Leaflet yazısı yok`, !(await s.locator(".leaflet-control-attribution").count())
+      && !/Leaflet|OpenStreetMap|CARTO/.test(await s.locator(".leaflet-container").innerText()));
+    kontrol(`${on}: uydu altlığı yüklendi`, (await s.locator('img.leaflet-tile[src*="World_Imagery"]').count()) > 0);
+    kontrol(`${on}: canlı yağış radarı (en son kare)`, radarKarolari.has("1790000600") && !radarKarolari.has("1790000000")
+      && await s.getByRole("button", { name: /Yağış radarı · \d\d:\d\d/ }).isVisible());
+    await foto(s, `${on}-02b-harita`);
+    await s.getByRole("button", { name: /Yağış radarı/ }).click(); await bekle(s, 400);
+    kontrol(`${on}: radar kapatılabiliyor`, !(await s.locator('img.leaflet-tile[src*="rainviewer"]').count())
+      && await s.getByRole("button", { name: "Radar kapalı" }).isVisible());
+    await s.getByRole("button", { name: "Radar kapalı" }).click();
+    await tasmaYok(s, `${on} harita`);
 
     await s.goto(U + "/musteriler"); await bekle(s);
     await foto(s, `${on}-03-musteriler`); await tasmaYok(s, `${on} müşteriler`);

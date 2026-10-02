@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, CircleMarker, Popup, Tooltip } from "react-leaflet";
+import { CloudRain, Info } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useVeri } from "../api/useVeri";
 import { musteriListesi, cihazListesi } from "../api/servis";
@@ -7,26 +8,58 @@ import { saglikDurumu } from "../veri/yardimci";
 import { Iskelet, HataKutusu } from "../bilesenler/VeriDurumu";
 import { SayfaBasligi } from "../bilesenler/Kart";
 import { useGrafikRenkleri } from "../bilesenler/Grafik";
-import { useEtkinTema } from "../api/ayarlar";
 
 /**
  * Saha haritası. Her müşteri adresi tek işaretle gösterilir; rengi o
  * adresteki en kötü cihazın durumunu taşır, büyüklüğü cihaz sayısını.
  */
 
-// CARTO altlıkları anahtar gerektirmez; tema ile birlikte değişir.
-const ALTLIK = {
-  koyu: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-  acik: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-};
+// Altlık: Esri uydu görüntüsü + yer adı/yol/sınır katmanı (anahtar gerektirmez).
+const UYDU = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+const ETIKET = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}";
+const YOLLAR = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}";
+
+// Canlı yağış radarı: RainViewer (anahtarsız; ücretsiz sürümde en fazla 7. yakınlık,
+// daha yakında aynı görüntü büyütülür). Son kare 10 dakikada bir yenilenir.
+const RADAR_LISTESI = "https://api.rainviewer.com/public/weather-maps.json";
+const RADAR_YENILEME = 5 * 60 * 1000;
+
+function useRadar(acik) {
+  const [kare, setKare] = useState(null); // {url, zaman}
+  useEffect(() => {
+    if (!acik) return undefined;
+    let iptal = false;
+    async function getir() {
+      try {
+        const y = await (await fetch(RADAR_LISTESI)).json();
+        const son = y?.radar?.past?.at(-1);
+        if (!iptal && son && y.host) {
+          setKare({ url: `${y.host}${son.path}/256/{z}/{x}/{y}/2/1_1.png`, zaman: new Date(son.time * 1000) });
+        }
+      } catch { /* radar alınamazsa harita radarsız çalışır */ }
+    }
+    getir();
+    const t = setInterval(getir, RADAR_YENILEME);
+    return () => { iptal = true; clearInterval(t); };
+  }, [acik]);
+  return kare;
+}
 
 const ONCELIK = { kritik: 3, uyari: 2, saglikli: 1, notr: 0 };
 
 export default function Harita({ gomulu = false, yukseklik }) {
   const git = useNavigate();
-  const tema = useEtkinTema();
   const RENK = useGrafikRenkleri();
   const [suzgec, setSuzgec] = useState("hepsi");
+  const [radarAcik, setRadarAcik] = useState(() => {
+    try { return localStorage.getItem("de_harita_radar") !== "0"; } catch { return true; }
+  });
+  const [kunye, setKunye] = useState(false);
+  const radar = useRadar(radarAcik);
+  const radarDegistir = () => setRadarAcik((a) => {
+    try { localStorage.setItem("de_harita_radar", a ? "0" : "1"); } catch { /* gizli sekme */ }
+    return !a;
+  });
   const { veri: musteriler, yukleniyor: mY, hata: mH, yenile } = useVeri(musteriListesi);
   const { veri: cihazlar, yukleniyor: cY, hata: cH } = useVeri(cihazListesi);
 
@@ -101,22 +134,25 @@ export default function Harita({ gomulu = false, yukseklik }) {
       )}
 
       <div
-        className={gomulu ? "h-full" : "overflow-hidden rounded-lg border border-cizgi bg-panel"}
-        style={gomulu ? undefined : { height: yukseklik || "calc(100vh - 250px)", minHeight: 380 }}
+        // Telefonda alt menü (~5.5rem) haritanın altını örtmesin
+        className={`relative ${gomulu ? "h-full" : `overflow-hidden rounded-lg border border-cizgi bg-panel
+          ${yukseklik ? "" : "h-[calc(100dvh-330px-env(safe-area-inset-bottom))] min-h-[360px] lg:h-[calc(100vh-250px)] lg:min-h-[380px]"}`}`}
+        style={gomulu || !yukseklik ? undefined : { height: yukseklik, minHeight: 380 }}
       >
         <MapContainer
           center={[36.98, 35.55]}
           zoom={8}
           style={{ height: "100%", width: "100%" }}
           scrollWheelZoom={false}
+          attributionControl={false}
+          maxZoom={18}
         >
-          <TileLayer
-            key={tema}
-            url={ALTLIK[tema] || ALTLIK.koyu}
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-            subdomains="abcd"
-            maxZoom={19}
-          />
+          <TileLayer url={UYDU} maxZoom={18} maxNativeZoom={18} />
+          <TileLayer url={YOLLAR} maxZoom={18} opacity={0.75} />
+          <TileLayer url={ETIKET} maxZoom={18} />
+          {radarAcik && radar && (
+            <TileLayer key={radar.url} url={radar.url} opacity={0.6} maxNativeZoom={7} maxZoom={18} zIndex={5} />
+          )}
 
           {gorunur.map((n) => {
             const renk = RENK[n.durum];
@@ -130,8 +166,8 @@ export default function Harita({ gomulu = false, yukseklik }) {
                 pathOptions={{
                   color: renk,
                   fillColor: renk,
-                  fillOpacity: n.sorunlu.length ? 0.6 : 0.3,
-                  weight: 2,
+                  fillOpacity: n.sorunlu.length ? 0.85 : 0.6,
+                  weight: 2.5,
                 }}
                 eventHandlers={{ click: () => git(`/musteri/${n.musteri.id}`) }}
               >
@@ -179,6 +215,27 @@ export default function Harita({ gomulu = false, yukseklik }) {
             );
           })}
         </MapContainer>
+
+        {/* Harita üstü denetimler: radar aç/kapat + kaynak künyesi (lisans gereği; küçük ve kapalı) */}
+        <div className="pointer-events-none absolute bottom-2 left-2 right-2 z-[400] flex items-end justify-between gap-2">
+          <button onClick={radarDegistir} aria-pressed={radarAcik}
+            className={`pointer-events-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-2xs ring-1 backdrop-blur
+              ${radarAcik ? "bg-black/60 text-white ring-white/25" : "bg-black/40 text-white/70 ring-white/15"}`}>
+            <CloudRain size={13} />
+            {radarAcik ? `Yağış radarı${radar ? ` · ${radar.zaman.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}` : ""}` : "Radar kapalı"}
+          </button>
+          <div className="pointer-events-auto flex items-center gap-1.5">
+            {kunye && (
+              <span className="rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white/80">
+                Görüntü © Esri, Maxar, Earthstar Geographics · Radar © RainViewer
+              </span>
+            )}
+            <button onClick={() => setKunye((k) => !k)} aria-label="Harita kaynakları"
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-black/40 text-white/70 hover:text-white">
+              <Info size={13} />
+            </button>
+          </div>
+        </div>
       </div>
 
       {!gomulu && <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-sonuk">
