@@ -247,7 +247,7 @@ if ($Atla -notcontains "hesap" -and -not $UreticiEposta) {
 Write-Host ""
 Write-Host "Yapılacaklar:" -ForegroundColor White
 if ($Atla -notcontains "backend") { Bilgi "1. Backend ayarları (izinler, giriş akışı, kaptcha anahtarı)" }
-if ($Atla -notcontains "lambda")  { Bilgi "2. Lambda yamaları: müşteri düzenleme ucu, kayıt öznitelikleri, otomatik onay, ölçüm TTL (yedekli, sağlık kontrollü)" }
+if ($Atla -notcontains "lambda")  { Bilgi "2. Lambda yamaları: müşteri düzenleme, kayıt öznitelikleri, otomatik onay, ölçüm TTL, asistan, hesap silme / şifremi unuttum / bildirim, KVKK onayı (yedekli, sağlık kontrollü)" }
 if ($Atla -notcontains "hesap")   { Bilgi "3. Üretici hesabı: $UreticiEposta" }
 if ($Atla -notcontains "web")     {
   $yontemAdi = @{ S3Web = "S3 statik web sitesi (yalnızca http)"; Otomatik = "CloudFront; olmazsa Amplify"; CloudFront = "CloudFront"; Amplify = "Amplify, https" }[$WebYontemi]

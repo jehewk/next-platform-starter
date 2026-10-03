@@ -68,3 +68,15 @@ hata diğerinde de düzeltilmeli. Mimari ve yayın: kök `YAYIN.md`.
   yalıtılmış iframe'de gösterir (kullanım şartı). Kaynaklar `[başlık](adres)` biçiminde gelir.
 - Kurulum/teşhis: `aws/asistan-kur.ps1`, `aws/asistan-teshis.ps1`.
 - Test: e2e yerel/genel ayrımını, "bugün kayıt olanlar"ı ve veri sızmamasını denetler.
+
+## Hesap, KVKK, bildirim
+
+- Müşteri: `/gizlilik` (herkese açık, `veri/kvkk.js`), kayıtta KVKK onayı (`kvkk_aydinlatma`,
+  `kvkk_surum`, `yurtdisi_riza`), `api/riza.js` (sohbette Google'a aktarım izni),
+  Hesabım'da hesap silme (`POST /de/hesap/sil {sifre}`).
+- İki uygulama: `/sifre-sifirla` (`/de/sifre/unuttum` kaptcha ile, `/de/sifre/sifirla`),
+  `api/bildirim.js` + `public/sw.js` push/notificationclick (iki uygulamada aynı dosyalar).
+- Backend: `aws/ekler/hesap.py` (yamala.py F), bildirim gönderici
+  `aws/ekler/bildirim/dennis_bildirim.py`; kurulum `aws/hazirlik-kur.ps1`.
+- e2e push aboneliğini tarayıcıda taklit eder (FCM yok); sahte API'de `ABONELIKLER`,
+  `KAYITLAR`, `SILINENLER`, `ASISTAN_ISTEKLERI` denetlenir.

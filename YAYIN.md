@@ -206,11 +206,10 @@ veya `npm run ios` ile IDE'de imzalayıp yükleyin.
 
 Mağaza incelemesinden önce:
 
-- **Hesap silme (Apple 5.1.1(v))**: müşteri uygulaması hesap açtırdığı için
-  uygulama içinden silme yolu zorunlu. `VITE_HESAP_SILME_URL` ile bir silme talebi
-  sayfası verin; Hesabım sayfasında bağlantı görünür.
-- **Gizlilik politikası** adresi (iki mağaza da ister) ve veri güvenliği formu:
-  toplanan veri e-posta, telefon, adres, cihaz ölçümleri.
+- **Hesap silme (Apple 5.1.1(v))**: Hesabım → "Hesabımı ve verilerimi sil" (şifreyle).
+  Mağazaya web adresi olarak `https://<müşteri-adresi>/gizlilik#hesap-silme` verin.
+- **Gizlilik politikası** adresi: `https://<müşteri-adresi>/gizlilik`. Veri güvenliği
+  formu: e-posta, telefon, adres, cihaz ölçümleri, (izinle) sohbet soruları ve fotoğraflar.
 - **İnceleme hesabı**: Apple/Google inceleyicisi için onaylı bir müşteri hesabı
   ve bu hesaba bağlı en az bir cihaz.
 - **CORS**: backend şu an `*` döndürüyor; daraltılırsa yerel uygulama
@@ -219,11 +218,40 @@ Mağaza incelemesinden önce:
 - Sürüm numarası: `package.json` `version` + Android `versionCode` / iOS build
   numarası her yüklemede artırılmalı.
 
+## Müşteriye hazırlık (`aws\hazirlik-kur.ps1`)
+
+Tek komut; tekrar çalıştırmak güvenlidir:
+
+```powershell
+.\hazirlik-kur.ps1                      # hepsi + Lambda yaması + iki uygulamanın yayını
+.\hazirlik-kur.ps1 -SuskunDakika 60     # "cihaz sustu" bildirimi 60 dk sonra
+```
+
+- **KVKK**: kayıtta Aydınlatma Metni onayı zorunlu (sunucu da denetler; onay zamanı ve
+  metin sürümü müşteri kaydına yazılır). Yurt dışına aktarım (sohbet → Google) ayrı ve
+  isteğe bağlı açık rıza; vermeyen müşterinin genel soruları/fotoğrafları Google'a gitmez,
+  Hesabım'dan açılıp kapatılır. Metinler `panel-musteri/src/veri/kvkk.js`; şirket bilgileri
+  `.env`: `VITE_SIRKET_UNVAN`, `VITE_SIRKET_ADRES`, `VITE_SIRKET_MERSIS`, `VITE_KVKK_EPOSTA`.
+  **Yayından önce avukata okutun.** AWS Frankfurt'ta saklama da KVKK m.9 kapsamında yurt
+  dışı aktarımdır: AWS ile standart sözleşme (DPA) imzalanıp Kurul'a bildirilmelidir.
+- **Hesap silme**: `/de/hesap/sil` — şifre yeniden sorulur; müşteri kaydı, bildirim
+  abonelikleri ve Cognito hesabı silinir, cihazların müşteri bağlantısı kaldırılır,
+  garanti kayıtları kalır.
+- **Şifremi unuttum**: iki uygulamada giriş ekranında; kaptcha + e-postaya kod.
+  Cognito'nun kendi e-postası günde 50 ile sınırlı ve İngilizce — müşteri artınca SES.
+- **Veri yedeği**: DynamoDB tablolarında sürekli yedek (son 35 günün herhangi bir anına
+  geri dönüş) ve silinme koruması. Geri dönüş: konsol > tablo > Backups > Restore.
+- **Anlık bildirim** (Web Push, VAPID): `dennis-bildirim` Lambda'sı 10 dakikada bir
+  çalışır; cihaz `SUSKUN_DK` dakikadır veri göndermiyorsa, arızalı / sağlığı < 65 ise ya da
+  55 °C üstüne çıkarsa bildirim gider — yalnızca durum değiştiğinde. Müşteri yalnızca
+  kendi cihazları için; üretici özet alır. iPhone'da uygulama ana ekrana eklenmiş olmalı
+  (iOS 16.4+). Mağaza (Capacitor) sürümünde bildirim için ayrıca Firebase/APNs gerekir.
+
 ## Açık kalanlar
 
 | | İş |
 |---|---|
-| 🔴 | Hesap silme sayfası ve gizlilik politikası (mağaza için zorunlu) |
-| 🟡 | Sohbet için dil modeli ucu (`VITE_ASISTAN_YOLU`); şu an kural tabanlı |
-| 🟡 | Anlık bildirim (push): "cihaz sustu", "kritik durum" — backend + Firebase/APNs |
+| 🔴 | KVKK metinlerinin hukuki incelemesi; AWS DPA + Kurul bildirimi; VERBİS kaydı (gerekiyorsa) |
+| 🟡 | Mağaza uygulamasında (Capacitor) yerel push: Firebase/APNs |
+| 🟡 | Cognito e-postası için Amazon SES (günde 50 sınırı, Türkçe şablon) |
 | 🟡 | Müşteri rolünün `/de/cihaz/detay`, `/de/cihaz/gecmis`, `/de/musteri/liste` uçlarına erişimi gerçek backend'de doğrulanmalı |
