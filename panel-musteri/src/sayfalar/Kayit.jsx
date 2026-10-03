@@ -3,11 +3,15 @@ import { Link } from "react-router-dom";
 import { CheckCircle2, Loader2, ChevronLeft } from "lucide-react";
 import Logo from "../bilesenler/Logo";
 import { kayitBasvurusu } from "../api/servis";
+import { KVKK_SURUM } from "../veri/kvkk";
+import { rizaAyarla } from "../api/riza";
 
 /**
  * Kayıt başvurusu — POST /de/musteri/kayit (DEVIR §6).
  * Hesap "onay_bekliyor" durumunda açılır; üretici onaylayınca giriş açılır.
  * Şifre kuralı Cognito ile aynı: en az 8 karakter, büyük/küçük harf ve rakam.
+ * KVKK: Aydınlatma Metni onayı zorunlu (backend de denetler); yurt dışına aktarım
+ * (sohbet asistanı) açık rızası isteğe bağlı ve ayrı onay kutusudur.
  */
 const URUNLER = [
   { id: "aku", ad: "Akü" },
@@ -37,6 +41,8 @@ export default function Kayit() {
     ad: "", soyad: "", eposta: "", sifre: "", telefon: "",
     il: "", ilce: "", adres: "", posta_kodu: "", urun: "ikisi",
   });
+  const [aydinlatma, setAydinlatma] = useState(false);
+  const [riza, setRiza] = useState(false);
   const [hata, setHata] = useState(null);
   const [gonderiliyor, setGonderiliyor] = useState(false);
   const [tamam, setTamam] = useState(null);
@@ -47,12 +53,14 @@ export default function Kayit() {
     e.preventDefault();
     if (sifreSorunu(f.sifre)) { setHata("Şifre: " + sifreSorunu(f.sifre).toLocaleLowerCase("tr")); return; }
     if (!telefonGecerli(f.telefon)) { setHata("Telefon numarası geçersiz (örnek: 0555 123 45 67)."); return; }
+    if (!aydinlatma) { setHata("Devam etmek için Aydınlatma Metni'ni okuduğunuzu onaylayın."); return; }
     setHata(null);
     setGonderiliyor(true);
     try {
       const temiz = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, k === "sifre" ? v : v.trim()]));
       temiz.eposta = temiz.eposta.toLowerCase();
-      const c = await kayitBasvurusu(temiz);
+      const c = await kayitBasvurusu({ ...temiz, kvkk_aydinlatma: true, kvkk_surum: KVKK_SURUM, yurtdisi_riza: riza });
+      rizaAyarla(riza);
       // Backend otomatik onay açıksa hesap hemen açılır (otomatik_onay: true)
       setTamam({ acik: !!c?.otomatik_onay });
     } catch (err) {
@@ -120,12 +128,34 @@ export default function Kayit() {
             ))}
           </div>
         </Alan>
+        <div className="space-y-3 border-t border-cizgi pt-4 sm:col-span-2">
+          <Onay deger={aydinlatma} degistir={setAydinlatma} zorunlu>
+            <a href="/gizlilik#aydinlatma" target="_blank" rel="noreferrer" className="font-medium text-metin underline underline-offset-2">
+              Aydınlatma Metni</a>'ni okudum; kişisel verilerimin hesabımın ve cihazlarımın izlenmesi için işlenmesini anladım.
+          </Onay>
+          <Onay deger={riza} degistir={setRiza}>
+            Sohbet asistanına yazdığım genel soruların ve gönderdiğim fotoğrafların yanıtlanması için Google'a (ABD)
+            aktarılmasına{" "}
+            <a href="/gizlilik#acik-riza" target="_blank" rel="noreferrer" className="font-medium text-metin underline underline-offset-2">
+              açık rıza</a> veriyorum. <span className="text-sonuk">(İsteğe bağlı; sonra da verebilir ya da geri alabilirsiniz.)</span>
+          </Onay>
+        </div>
         {hata && <p role="alert" className="rounded-md border border-kritik/30 bg-kritik/10 px-3 py-2 text-xs text-kritik sm:col-span-2">{hata}</p>}
         <button type="submit" disabled={gonderiliyor} className="dugme-ana min-h-[44px] sm:col-span-2">
           {gonderiliyor && <Loader2 size={15} className="animate-spin" />} Başvuruyu gönder
         </button>
       </form>
     </Cerceve>
+  );
+}
+
+function Onay({ deger, degistir, zorunlu, children }) {
+  return (
+    <label className="flex cursor-pointer gap-3 text-xs leading-relaxed text-soluk">
+      <input type="checkbox" checked={deger} onChange={(e) => degistir(e.target.checked)} required={zorunlu}
+        className="mt-0.5 h-5 w-5 shrink-0 accent-[rgb(var(--metin))]" />
+      <span>{children}{zorunlu && <span className="text-kritik" aria-hidden> *</span>}</span>
+    </label>
   );
 }
 

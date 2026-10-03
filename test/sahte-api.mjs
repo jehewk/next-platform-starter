@@ -219,6 +219,13 @@ const bekle = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
 const MUSTERI_OTURUMU = "MUS-1003";
 
+// Testlerin denetlediği yan etkiler
+export const KAYITLAR = [];
+export const SILINENLER = [];
+export const ABONELIKLER = new Map();
+export const ASISTAN_ISTEKLERI = [];
+const SIFRE_KODLARI = {};
+
 /** yol: "/de/..." (?sorgu dahil), govde: nesne, token: Bearer değeri. */
 export async function sahteIstek(yol, govde = {}, token = "") {
   await bekle(40 + Math.random() * 80);
@@ -231,6 +238,7 @@ export async function sahteIstek(yol, govde = {}, token = "") {
 
   switch (yolu) {
     case "/de/asistan": {
+      ASISTAN_ISTEKLERI.push(govde);
       // Gerçek uç dil modeline gider. Burada: genel sorular için sahte yanıt.
       // Sistem verisi (baglam) GÖNDERİLMEMELİ — veri soruları ayrıştırıcıda yanıtlanır.
       if (govde.baglam) throw Object.assign(new Error("baglam gönderilmemeli"), { durum: 400 });
@@ -256,6 +264,32 @@ export async function sahteIstek(yol, govde = {}, token = "") {
       return { yanit: `**Genel yanıt** (${govde.panel}, geçmiş ${govde.gecmis?.length ?? 0}${veriSizdi ? ", VERİ SIZDI" : ""}):\n` +
         `Bu genel bir sorudur.\n\nKaynaklar:\n- https://ornek.org/lfp-bakim` };
     }
+    // ── hesap uçları (aws/ekler/hesap.py) ──
+    case "/de/sifre/unuttum":
+      if (String(govde.kaptcha_cevap).toLowerCase() !== "k4tm9")
+        throw Object.assign(new Error("Dogrulama kodu hatali veya suresi doldu"), { durum: 400 });
+      SIFRE_KODLARI[String(govde.eposta)] = "123456";
+      return { ok: true, mesaj: "Bu e-posta ile bir hesap varsa dogrulama kodu gonderildi." };
+    case "/de/sifre/sifirla":
+      if (SIFRE_KODLARI[String(govde.eposta)] !== govde.kod) throw Object.assign(new Error("Kod hatali"), { durum: 400 });
+      if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(govde.yeni_sifre || ""))
+        throw Object.assign(new Error("Sifre kurallara uymuyor: en az 8 karakter, buyuk harf, kucuk harf ve rakam"), { durum: 400 });
+      delete SIFRE_KODLARI[String(govde.eposta)];
+      return { ok: true };
+    case "/de/hesap/sil":
+      if (!musteri) throw Object.assign(new Error("Bu islem yalnizca musteri hesaplari icindir"), { durum: 403 });
+      if (govde.sifre !== "Sifre1234") throw Object.assign(new Error("Sifre hatali"), { durum: 403 });
+      SILINENLER.push(musteri);
+      return { ok: true };
+    case "/de/bildirim/abone":
+    case "/de/bildirim/iptal": {
+      const uc = String(govde.abonelik?.endpoint || "");
+      if (!/^https:\/\/([^/]+\.)?(fcm\.googleapis\.com|push\.apple\.com|push\.services\.mozilla\.com)\//.test(uc))
+        throw Object.assign(new Error("Gecersiz bildirim aboneligi"), { durum: 400 });
+      if (yolu.endsWith("abone")) ABONELIKLER.set(uc, { rol: musteri ? "musteri" : "uretici", anahtarlar: govde.abonelik.keys });
+      else ABONELIKLER.delete(uc);
+      return { ok: true };
+    }
     case "/de/kaptcha":
       return { svg: '<svg xmlns="http://www.w3.org/2000/svg" width="150" height="46"><rect width="150" height="46" fill="#F8FAFC"/><text x="22" y="31" font-size="24" font-family="monospace" fill="#0F172A">k4Tm9</text></svg>',
                token: "kaptcha-test", saniye: 30 };
@@ -268,6 +302,9 @@ export async function sahteIstek(yol, govde = {}, token = "") {
     case "/de/token/yenile":
       return { erisim: token || "T-URETICI" };
     case "/de/musteri/kayit":
+      // KVKK yaması: aydınlatma onayı zorunlu (aws/ekler/yamala.py, H)
+      if (govde.kvkk_aydinlatma !== true) throw Object.assign(new Error("Kayit icin Aydinlatma Metni onayi gerekli"), { durum: 400 });
+      KAYITLAR.push(govde);
       // Canlı backend OTOMATIK_ONAY açıkken (varsayılan) hesap hemen onaylanır
       return { musteri_id: "MST-9001", otomatik_onay: true, mesaj: "Hesabiniz acildi. Giris yapabilirsiniz." };
     case "/de/ozet": {

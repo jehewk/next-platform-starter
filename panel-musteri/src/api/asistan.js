@@ -4,6 +4,7 @@ import { sistemimiGetir, olcumYasiDk, SESSIZ_DAKIKA } from "./sistem";
 import { garantiDurumu, onceMetni } from "../veri/yardimci";
 import { musteriDurumu, musteriMesaji, enerjiAkisi, paketGerilimi, enYuksekSicaklik, TALEP_DURUMU } from "../veri/sadeDil";
 import { musteriNiyeti } from "./ayristirici";
+import { rizaVar } from "./riza";
 import { gecmisleriGetir, grafikVerisi } from "./saglikGecmisi";
 
 /**
@@ -55,6 +56,15 @@ export async function soruSor(soru, gecmis = [], { gorsel } = {}) {
   }
 
   if (!UZAK_YOL) return { metin: anlamadim(), kaynak: "yerel" };
+  // KVKK: genel sorular ve fotoğraflar yalnızca açık rızayla Google'a gider
+  if (!rizaVar()) {
+    return {
+      metin: "Genel soruları ve fotoğrafları yanıtlayabilmem için sohbetin altındaki **izni** vermeniz gerekiyor " +
+        "(sorular yanıtlanmak üzere Google'a iletilir). Sisteminizle ilgili soruları izin olmadan da yanıtlarım:\n" +
+        "· Sistemim nasıl?\n· Akümde ne kadar enerji var?\n· Bugün ne kadar ürettim?",
+      kaynak: "yerel",
+    };
+  }
   try {
     const c = await api.post(UZAK_YOL, {
       soru, gecmis: modelGecmisi(gecmis), panel: "musteri",

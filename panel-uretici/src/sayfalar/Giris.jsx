@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { girisYap } from "../api/oturum";
 import Logo from "../bilesenler/Logo";
@@ -11,7 +11,7 @@ export default function Giris() {
   const konum = useLocation();
   const donus = konum.state?.donus && konum.state.donus !== "/giris" ? konum.state.donus : "/";
 
-  const [eposta, setEposta] = useState("");
+  const [eposta, setEposta] = useState(konum.state?.eposta || "");
   const [sifre, setSifre] = useState("");
   const [sifreGoster, setSifreGoster] = useState(false);
   const [kod, setKod] = useState("");
@@ -65,6 +65,12 @@ export default function Giris() {
             </div>
             <Kaptcha deger={kod} onChange={setKod} onToken={setKaptchaToken} />
 
+            {konum.state?.mesaj && !hata && (
+              <p role="status" className="rounded-md border border-saglikli/30 bg-saglikli/10 px-3 py-2 text-xs text-saglikli">
+                {konum.state.mesaj}
+              </p>
+            )}
+
             {hata && (
               <p role="alert" className="rounded-md border border-kritik/30 bg-kritik/10 px-3 py-2 text-xs text-kritik">
                 {hata}
@@ -76,6 +82,10 @@ export default function Giris() {
               {gonderiliyor ? "Giriş yapılıyor…" : "Giriş yap"}
             </button>
 
+            <Link to="/sifre-sifirla" state={{ eposta: eposta.trim() }}
+              className="block text-center text-xs text-sonuk underline underline-offset-4 hover:text-metin">
+              Şifremi unuttum
+            </Link>
           </form>
 
           <p className="mt-6 text-center text-xs text-sonuk">

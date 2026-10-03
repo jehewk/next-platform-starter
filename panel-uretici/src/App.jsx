@@ -10,6 +10,7 @@ import AltMenu from "./bilesenler/AltMenu";
 import { ToastSaglayici } from "./bilesenler/Toast";
 import { Iskelet } from "./bilesenler/VeriDurumu";
 import Giris from "./sayfalar/Giris";
+import SifreSifirla from "./sayfalar/SifreSifirla";
 import { oturumOku } from "./api/oturum";
 import { AyarlarSaglayici } from "./api/ayarlar";
 import { SohbetSaglayici } from "./api/sohbetler";
@@ -53,6 +54,7 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/giris" element={<Giris />} />
+            <Route path="/sifre-sifirla" element={<SifreSifirla />} />
             <Route path="/*" element={<Korumali><SohbetSaglayici><Uygulama /></SohbetSaglayici></Korumali>} />
           </Routes>
         </BrowserRouter>

@@ -49,6 +49,21 @@ Yamalar (her biri bağımsız; zaten varsa atlanır):
     Katman yoksa ya da modül yüklenemezse uç 503 döner; Lambda'nın geri
     kalanı etkilenmez.
 
+ F) Hesap uçları (ekler/hesap.py): POST /de/hesap/sil, /de/sifre/unuttum,
+    /de/sifre/sifirla, /de/bildirim/abone, /de/bildirim/iptal
+  · Cognito istemcisi, havuz ve uygulama istemcisi ifadeleri, kaptcha
+    doğrulama çağrısı ve cihaz tablosu canlı koddan okunur.
+  · Şifre sıfırlama uçları CIHAZ_ENDPOINTLERI'ne (oturumsuz uçlar) eklenir.
+
+ G) E-posta doğrulandı işareti
+  · Her admin_confirm_sign_up çağrısının ardından email_verified=true atanır;
+    Cognito "şifremi unuttum" kodunu yalnızca doğrulanmış e-postaya gönderir.
+
+ H) KVKK onayı (kayıt)
+  · Aydınlatma metni onayı (kvkk_aydinlatma) olmayan kayıt 400 ile reddedilir.
+  · Onay zamanı, metin sürümü ve yurt dışı aktarım açık rızası müşteri
+    kaydına yazılır (ispat yükü veri sorumlusundadır).
+
 Sonuç Python derleyicisinden geçirilir; hata varsa hiçbir şey yazılmaz.
 Girdi dosyasına asla dokunmaz.
 """
@@ -390,6 +405,154 @@ def yama_asistan(kaynak):
     return kaynak, True
 
 
+HESAP_EK = Path(__file__).with_name("hesap.py")
+HESAP_YOLLARI = ("/de/hesap/sil", "/de/sifre/unuttum", "/de/sifre/sifirla", "/de/bildirim/abone", "/de/bildirim/iptal")
+ACIK_YOLLAR = ("/de/sifre/unuttum", "/de/sifre/sifirla")
+
+
+def cognito_bilgisi(kaynak):
+    """(istemci değişkeni, havuz ifadesi, uygulama istemcisi ifadesi) — bulunamazsa YamaAtla."""
+    istemci = re.search(r"""^(\w+)\s*=\s*boto3\.client\(\s*['"]cognito-idp['"]""", kaynak, re.M)
+    if not istemci:
+        raise YamaAtla("modül düzeyinde boto3.client('cognito-idp') bulunamadı.")
+    havuz = re.search(r"admin_confirm_sign_up\((?:[^()]|\([^()]*\))*?UserPoolId\s*=\s*([^,\)\n]+)", kaynak, re.S)
+    if not havuz:
+        raise YamaAtla("admin_confirm_sign_up(UserPoolId=...) bulunamadı; havuz belirlenemedi.")
+    uygulama = None
+    for yol in ("/de/giris", "/de/musteri/kayit", "/de/token/yenile"):
+        k = blok_bul(kaynak, yol)
+        m = k and re.search(r"ClientId\s*=\s*([^,\)\n]+)", kaynak[k[0]:k[1]])
+        if m:
+            uygulama = m.group(1).strip()
+            break
+    if not uygulama:
+        raise YamaAtla("ClientId=... bulunamadı; uygulama istemcisi belirlenemedi.")
+    return istemci.group(1), havuz.group(1).strip(), uygulama
+
+
+def yama_hesap(kaynak):
+    """F) Hesap silme, şifre sıfırlama, bildirim aboneliği. Döner: (yeni_kaynak, uygulandi_mi)."""
+    eksik = [y for y in HESAP_YOLLARI if not re.search(r"""if\s+path\s*==\s*['"]%s['"]""" % re.escape(y), kaynak)]
+    if not eksik:
+        print("YAMA: hesap uclari zaten var.")
+        return kaynak, False
+    if len(eksik) != len(HESAP_YOLLARI):
+        raise YamaAtla(f"hesap uçlarının bir kısmı zaten var ({', '.join(sorted(set(HESAP_YOLLARI) - set(eksik)))}); elle bakılmalı.")
+    cognito, havuz, uygulama = cognito_bilgisi(kaynak)
+
+    g = blok_bul(kaynak, "/de/giris")
+    kap = g and re.search(r"""(\w*kaptcha\w*)\(\s*body\.get\(\s*['"]kaptcha_token['"][^()]*\)\s*,"""
+                          r"""\s*body\.get\(\s*['"]kaptcha_cevap['"][^()]*\)\s*\)""", kaynak[g[0]:g[1]])
+    if not kap:
+        raise YamaAtla("/de/giris işleyicisinde kaptcha doğrulama çağrısı bulunamadı.")
+    cihaz = (tablo_ifadeleri(kaynak, "/de/cihaz/liste") or ["'dennis-cihazlar'"])[0]
+
+    h = re.search(r"^def\s+lambda_handler\s*\(\s*(\w+)", kaynak, re.M)
+    capa = re.search(
+        r"""^([ \t]*)if\s+path\s*==\s*['"]/de/musteri/olustur['"]\s+and\s+method\s*==\s*['"]POST['"]\s*:""",
+        kaynak, re.M)
+    if not (h and capa):
+        raise YamaAtla("lambda_handler ya da /de/musteri/olustur bulunamadı.")
+    for gerekli in ("DE_MUSTERI", "def response", "dynamodb"):
+        if gerekli not in kaynak:
+            raise YamaAtla(f"'{gerekli}' bulunamadı.")
+
+    ek = HESAP_EK.read_text(encoding="utf-8")
+    yardimci = ek[ek.index("# ═══ YARDIMCILAR ═══"):ek.index("# ═══ UÇLAR ═══")]
+    yardimci = yardimci.split("\n", 1)[1]
+    uclar = ek[ek.index("# ═══ UÇLAR ═══"):].split("\n", 1)[1].rstrip() + "\n\n"
+    for yer, deger in (("__COGNITO__", cognito), ("__HAVUZ__", havuz), ("__ISTEMCI__", uygulama),
+                       ("__KAPTCHA__", kap.group(0)), ("__CIHAZ__", cihaz)):
+        yardimci = yardimci.replace(yer, deger)
+    olay = h.group(1)
+    if olay != "event":
+        uclar = re.sub(r"\bevent\b", olay, uclar)
+    gir = capa.group(1)
+    uclar = "\n".join((gir + s[4:]) if s.strip() else s for s in uclar.splitlines()) + "\n"
+    kaynak = kaynak[:capa.start()] + uclar + kaynak[capa.start():]
+    h = re.search(r"^def\s+lambda_handler\s*\(", kaynak, re.M)
+    kaynak = kaynak[:h.start()] + yardimci.rstrip() + "\n\n\n" + kaynak[h.start():]
+    for modul in ("os", "json"):
+        if not re.search(r"^import\s+[^\n]*\b%s\b" % modul, kaynak, re.M):
+            kaynak = f"import {modul}\n" + kaynak
+
+    # Şifre sıfırlama oturumsuz uçlardır
+    ac = re.search(r"^CIHAZ_ENDPOINTLERI\s*=\s*\(", kaynak, re.M)
+    if not ac:
+        raise YamaAtla("CIHAZ_ENDPOINTLERI bulunamadı; şifre sıfırlama uçları oturumsuz açılamadı.")
+    # Açılış parantezinin hemen ardına eklenir: tek satırlık, çok satırlık ve yorumlu demetlerde geçerli
+    ekler = "".join(f"\n    '{y}'," for y in ACIK_YOLLAR)
+    kaynak = kaynak[:ac.end()] + ekler + kaynak[ac.end():]
+    print(f"YAMA: hesap uclari eklendi (cognito: {cognito}, havuz: {havuz}, istemci: {uygulama}, cihaz tablosu: {cihaz}).")
+    return kaynak, True
+
+
+def yama_eposta_dogrula(kaynak):
+    """G) admin_confirm_sign_up sonrası email_verified=true. Döner: (yeni_kaynak, uygulandi_mi)."""
+    desen = re.compile(r"^([ \t]*)(\w+)\.admin_confirm_sign_up\(\s*UserPoolId\s*=\s*([^,\n]+?)\s*,\s*Username\s*=\s*([^\n]+?)\)[ \t]*\n", re.M)
+    parcalar, son, sayi = [], 0, 0
+    for m in desen.finditer(kaynak):
+        sonraki = "\n".join(kaynak[m.end():].split("\n", 4)[:4])   # sonraki dört satır
+        parcalar.append(kaynak[son:m.end()])
+        son = m.end()
+        if "email_verified" in sonraki:
+            continue
+        g, ist, havuz, ad = m.groups()
+        parcalar.append(f"{g}try:  # sifremi unuttum kodu yalnizca dogrulanmis e-postaya gider\n"
+                        f"{g}    {ist}.admin_update_user_attributes(UserPoolId={havuz}, Username={ad},\n"
+                        f"{g}        UserAttributes=[{{'Name': 'email_verified', 'Value': 'true'}}])\n"
+                        f"{g}except Exception as _e:\n"
+                        f"{g}    print(f\"email_verified atanamadi: {{_e}}\")\n")
+        sayi += 1
+    if not parcalar:
+        raise YamaAtla("admin_confirm_sign_up(UserPoolId=..., Username=...) çağrısı bulunamadı.")
+    if not sayi:
+        print("YAMA: e-posta dogrulama zaten var.")
+        return kaynak, False
+    kaynak = "".join(parcalar) + kaynak[son:]
+    print(f"YAMA: {sayi} onay noktasina email_verified eklendi.")
+    return kaynak, True
+
+
+def yama_kvkk(kaynak):
+    """H) Kayıtta KVKK aydınlatma onayı zorunlu; onay kayda yazılır. Döner: (yeni_kaynak, uygulandi_mi)."""
+    if "kvkk_aydinlatma" in kaynak:
+        print("YAMA: KVKK onayi zaten var.")
+        return kaynak, False
+    k = blok_bul(kaynak, "/de/musteri/kayit")
+    if not k:
+        raise YamaAtla("'/de/musteri/kayit' işleyicisi bulunamadı.")
+    blok = kaynak[k[0]:k[1]]
+    ek = re.search(r"^([ \t]*)if\s+eksik\s*:[ \t]*\n([ \t]*)return\s+response\([^\n]*\n", blok, re.M)
+    if not ek:
+        raise YamaAtla("kayıt işleyicisinde eksik alan kontrolü bulunamadı.")
+    g, ic = ek.group(1), ek.group(2)
+    kontrol = (f"{g}if body.get('kvkk_aydinlatma') is not True:\n"
+               f"{ic}return response(400, {{'hata': 'Kayit icin Aydinlatma Metni onayi gerekli'}})\n")
+    blok = blok[:ek.end()] + kontrol + blok[ek.end():]
+    su = blok.find("sign_up(")
+    hedef = re.compile(r"^([ \t]*)(?:# Otomatik onay|return\s+response\(\s*200\b)", re.M).search(blok, su if su >= 0 else 0)
+    if su < 0 or not hedef or not re.search(r"^\s*musteri_id\s*=", blok[:hedef.start()], re.M):
+        raise YamaAtla("kayıt işleyicisinde sign_up sonrası başarılı yanıt ya da musteri_id bulunamadı.")
+    g = hedef.group(1)
+    yaz = (f"{g}# KVKK: onay zamani, metin surumu ve yurt disi aktarim acik rizasi (ispat icin)\n"
+           f"{g}try:\n"
+           f"{g}    dynamodb.Table(DE_MUSTERI).update_item(\n"
+           f"{g}        Key={{'musteri_id': musteri_id}},\n"
+           f"{g}        UpdateExpression='SET kvkk_aydinlatma = :z, kvkk_surum = :s, yurtdisi_riza = :y',\n"
+           f"{g}        ExpressionAttributeValues={{':z': datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec='seconds'),\n"
+           f"{g}                                   ':s': str(body.get('kvkk_surum') or '')[:20],\n"
+           f"{g}                                   ':y': body.get('yurtdisi_riza') is True}})\n"
+           f"{g}except Exception as e:\n"
+           f"{g}    print(f\"kvkk onayi yazilamadi: {{e}}\")\n")
+    blok = blok[:hedef.start()] + yaz + blok[hedef.start():]
+    kaynak = kaynak[:k[0]] + blok + kaynak[k[1]:]
+    if not re.search(r"^from\s+datetime\s+import\s+[^\n]*\bdatetime\b[^\n]*\btimezone\b|^from\s+datetime\s+import\s+[^\n]*\btimezone\b[^\n]*\bdatetime\b", kaynak, re.M):
+        kaynak = "from datetime import datetime, timezone\n" + kaynak
+    print("YAMA: KVKK onayi kayda eklendi.")
+    return kaynak, True
+
+
 def main():
     if len(sys.argv) == 3 and sys.argv[1] == "--olcum-tablosu":
         try:
@@ -407,7 +570,8 @@ def main():
     atlananlar = []
     uygulandi = [a, b]
     for ad, yama in (("otomatik onay", yama_otomatik_onay), ("olcum TTL", yama_olcum_ttl),
-                     ("asistan ucu", yama_asistan)):
+                     ("asistan ucu", yama_asistan), ("hesap uclari", yama_hesap),
+                     ("e-posta dogrulama", yama_eposta_dogrula), ("KVKK onayi", yama_kvkk)):
         try:
             kaynak, u = yama(kaynak)
             uygulandi.append(u)

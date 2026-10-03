@@ -65,6 +65,12 @@ export default function Giris() {
             </div>
             <Kaptcha deger={kod} onChange={setKod} onToken={setKaptchaToken} />
 
+            {konum.state?.mesaj && !hata && (
+              <p role="status" className="rounded-md border border-saglikli/30 bg-saglikli/10 px-3 py-2 text-xs text-saglikli">
+                {konum.state.mesaj}
+              </p>
+            )}
+
             {hata && (
               <p role="alert" className="rounded-md border border-kritik/30 bg-kritik/10 px-3 py-2 text-xs text-kritik">
                 {hata}
@@ -76,6 +82,10 @@ export default function Giris() {
               {gonderiliyor ? "Giriş yapılıyor…" : "Giriş yap"}
             </button>
 
+            <Link to="/sifre-sifirla" state={{ eposta: eposta.trim() }}
+              className="block text-center text-xs text-sonuk underline underline-offset-4 hover:text-metin">
+              Şifremi unuttum
+            </Link>
           </form>
 
           <p className="mt-6 text-center text-xs text-sonuk">

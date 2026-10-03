@@ -17,14 +17,16 @@ const kok = join(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 let pw;
 try { pw = require("playwright"); } catch { pw = require(join(execSync("npm root -g").toString().trim(), "playwright")); }
-const { sahteIstek } = await import(join(kok, "test/sahte-api.mjs"));
+const { sahteIstek, KAYITLAR, SILINENLER, ABONELIKLER, ASISTAN_ISTEKLERI } = await import(join(kok, "test/sahte-api.mjs"));
+// Sahte VAPID genel anahtarı (65 bayt, 0x04 ile başlar); push aboneliği tarayıcıda taklit edilir
+const VAPID = Buffer.from([4, ...Array.from({ length: 64 }, (_, i) => i + 1)]).toString("base64url");
 const CIKTI = process.argv[2] || join(kok, "test/ekranlar");
 mkdirSync(CIKTI, { recursive: true });
 
 const sunucular = [];
 function baslat(klasor, port) {
   const p = spawn("npx", ["vite", "--port", String(port), "--strictPort"], {
-    cwd: join(kok, klasor), env: { ...process.env, VITE_API_URL: "https://api.test/prod", VITE_ASISTAN_YOLU: "/de/asistan" }, stdio: "pipe",
+    cwd: join(kok, klasor), env: { ...process.env, VITE_API_URL: "https://api.test/prod", VITE_ASISTAN_YOLU: "/de/asistan", VITE_VAPID_GENEL: VAPID }, stdio: "pipe",
     detached: true,   // kendi süreç grubu: npx'in başlattığı vite de birlikte kapatılabilsin
   });
   sunucular.push(p);
@@ -52,6 +54,25 @@ async function baglam(tarayici, genislik) {
     } catch (e) {
       await route.fulfill({ status: e.durum || 500, headers: cors, contentType: "application/json", body: JSON.stringify({ hata: e.message }) });
     }
+  });
+  // Push servisi (FCM) bu ortamda yok: abonelik tarayıcıda taklit edilir, sunucuya giden kayıt gerçektir
+  await b.grantPermissions(["notifications"]);
+  await b.addInitScript(() => {
+    if (!("PushManager" in self)) return;
+    // Başsız Chromium bildirim iznini her zaman "denied" bildirir: izin taklit edilir
+    let izin = "default";
+    Object.defineProperty(Notification, "permission", { get: () => izin });
+    Notification.requestPermission = async () => (izin = "granted");
+    let abone = null;
+    PushManager.prototype.subscribe = async function (secenek) {
+      const anahtar = new Uint8Array(secenek.applicationServerKey);
+      if (anahtar.length !== 65 || anahtar[0] !== 4) throw new Error("VAPID anahtarı geçersiz");
+      abone = { endpoint: "https://fcm.googleapis.com/fcm/send/test-" + Math.random().toString(36).slice(2),
+        toJSON() { return { endpoint: this.endpoint, keys: { p256dh: "B".repeat(87), auth: "A".repeat(22) } }; },
+        async unsubscribe() { abone = null; return true; } };
+      return abone;
+    };
+    PushManager.prototype.getSubscription = async () => abone;
   });
   // Dış kaynaklar (yazı tipi) bu ortamda erişilemez; test dışı.
   await b.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
@@ -191,6 +212,14 @@ try {
     kontrol(`${on}: akü detayında NaN/undefined yok`, !/NaN|undefined/.test(await s.locator("main").innerText()));
     await foto(s, `${on}-06-aku`); await tasmaYok(s, `${on} akü detay`);
     kontrol(`${on}: akü paket gerilimi gösterildi`, await s.getByText("Paket gerilimi").isVisible());
+    await s.goto(U + "/ayarlar"); await bekle(s);
+    const anlik = s.getByRole("switch", { name: "Anlık bildirim" });
+    await anlik.click(); await bekle(s, 1200);
+    kontrol(`${on}: üretici anlık bildirimi açtı (rol: uretici)`, (await anlik.getAttribute("aria-checked")) === "true"
+      && [...ABONELIKLER.values()].some((a) => a.rol === "uretici"));
+    await anlik.click(); await bekle(s, 800);
+    kontrol(`${on}: üretici anlık bildirimi kapattı`, ![...ABONELIKLER.values()].some((a) => a.rol === "uretici"));
+    await tasmaYok(s, `${on} ayarlar`);
     await b.close();
   }
 
@@ -217,6 +246,14 @@ try {
     await s.getByRole("button", { name: "Akümde ne kadar enerji var?" }).click();
     await bekle(s, 1500);
     kontrol(`${on}: veri sorusu yerelde yanıtlandı`, await s.getByText(/şarj %\d+/).first().isVisible());
+    // KVKK: izin yokken genel soru Google'a (dil modeline) gitmez, fotoğraf düğmesi kapalı
+    const once = ASISTAN_ISTEKLERI.length;
+    await s.getByRole("textbox").last().fill("LiFePO4 nedir"); await s.keyboard.press("Enter"); await bekle(s, 1200);
+    kontrol(`${on}: izin yokken genel soru modele gitmedi`, ASISTAN_ISTEKLERI.length === once
+      && await s.getByText(/izni\*{0,2} vermeniz gerekiyor|izni vermeniz gerekiyor/).first().isVisible());
+    kontrol(`${on}: izin yokken fotoğraf düğmesi kapalı`, await s.getByRole("button", { name: "Fotoğraf ekle" }).isDisabled());
+    await s.getByRole("button", { name: "İzin veriyorum" }).click();
+    kontrol(`${on}: izin verilince bilgi kutusu kalktı`, !(await s.getByRole("button", { name: "İzin veriyorum" }).count()));
     await s.getByRole("button", { name: "Akümün ömrünü nasıl uzatırım?" }).first().click().catch(async () => {
       await s.getByRole("textbox").last().fill("Akümün ömrünü nasıl uzatırım?"); await s.keyboard.press("Enter");
     });
@@ -268,7 +305,36 @@ try {
     await bekle(s); await foto(s, `${on}-06-destek`); await tasmaYok(s, `${on} destek`);
 
     await s.goto(M + "/hesap"); await bekle(s);
+    // Bildirimler: aç → abonelik sunucuya kaydedilir; kapat → silinir
+    const bildirim = s.getByRole("switch", { name: "Bildirimler" });
+    kontrol(`${on}: bildirim anahtarı kapalı başlar`, await gorunur(bildirim) && (await bildirim.getAttribute("aria-checked")) === "false");
+    await bildirim.click(); await bekle(s, 1200);
+    kontrol(`${on}: bildirim açıldı, abonelik kaydedildi (müşteri)`, (await bildirim.getAttribute("aria-checked")) === "true"
+      && [...ABONELIKLER.values()].some((a) => a.rol === "musteri"));
+    await bildirim.click(); await bekle(s, 800);
+    kontrol(`${on}: bildirim kapatıldı, abonelik silindi`, (await bildirim.getAttribute("aria-checked")) === "false"
+      && ![...ABONELIKLER.values()].some((a) => a.rol === "musteri"));
+    const izin = s.getByRole("switch", { name: "Sohbet asistanı genel soru izni" });
+    kontrol(`${on}: asistan izni hesapta açık görünüyor`, (await izin.getAttribute("aria-checked")) === "true");
     await foto(s, `${on}-07-hesap`); await tasmaYok(s, `${on} hesap`);
+    // Hesap silme: yanlış şifre reddedilir
+    await s.getByRole("button", { name: "Hesabımı ve verilerimi sil" }).click();
+    const sil = s.getByRole("dialog", { name: "Hesabımı ve verilerimi sil" });
+    await sil.getByLabel("Onaylamak için şifreniz").fill("Yanlis123");
+    kontrol(`${on}: onay kutusu işaretlenmeden silinemez`, await sil.getByRole("button", { name: "Kalıcı olarak sil" }).isDisabled());
+    await sil.getByRole("checkbox").check();
+    await sil.getByRole("button", { name: "Kalıcı olarak sil" }).click();
+    kontrol(`${on}: hesap silmede yanlış şifre`, await gorunur(sil.getByText("Şifre hatalı.")) && !SILINENLER.length);
+    await foto(s, `${on}-07b-hesap-sil`); await tasmaYok(s, `${on} hesap silme`);
+    if (on === "musteri-masaustu") {
+      await sil.getByLabel("Onaylamak için şifreniz").fill("Sifre1234");
+      await sil.getByRole("button", { name: "Kalıcı olarak sil" }).click();
+      kontrol("hesap silindi: girişe dönüldü, mesaj gösterildi", await gorunur(s.getByText("Hesabınız ve kişisel verileriniz silindi."))
+        && SILINENLER.includes("MUS-1003"));
+      kontrol("hesap silindi: oturum ve yerel veriler temizlendi", await s.evaluate(() => !sessionStorage.length && !localStorage.getItem("de_sohbetler")));
+    } else {
+      await sil.getByRole("button", { name: "Vazgeç" }).click();
+    }
     await b.close();
   }
 
@@ -284,10 +350,49 @@ try {
     for (const [k, v] of Object.entries(alanlar)) await s.getByLabel(k, { exact: true }).fill(v);
     await foto(s, "musteri-08-kayit");
     await tasmaYok(s, "kayıt formu");
+    await s.getByRole("button", { name: "Başvuruyu gönder" }).click(); await bekle(s, 600);
+    kontrol("kayıt: Aydınlatma Metni onayı olmadan gönderilmez", !KAYITLAR.length);
+    kontrol("kayıt: aydınlatma metni bağlantısı gizlilik sayfasına", (await s.getByRole("link", { name: "Aydınlatma Metni" }).getAttribute("href")) === "/gizlilik#aydinlatma");
+    await s.getByRole("checkbox").first().check();
     await s.getByRole("button", { name: "Başvuruyu gönder" }).click();
+    kontrol("kayıt: KVKK onayı ve sürümü gönderildi, açık rıza işaretsiz (false)", await gorunur(s.getByRole("heading", { name: "Hesabınız açıldı" }))
+      && KAYITLAR.at(-1)?.kvkk_aydinlatma === true && KAYITLAR.at(-1)?.yurtdisi_riza === false && /^\d{4}-\d{2}$/.test(KAYITLAR.at(-1)?.kvkk_surum));
     kontrol("kayıt: hesap açıldı ekranı (otomatik onay)", await gorunur(s.getByRole("heading", { name: "Hesabınız açıldı" })));
     await s.getByRole("link", { name: "Giriş yap" }).click();
     kontrol("kayıt: giriş e-postası dolu geliyor", (await s.getByLabel("E-posta").inputValue()) === "ayse@ornek.com");
+
+    // Şifremi unuttum
+    await s.getByRole("link", { name: "Şifremi unuttum" }).click();
+    kontrol("şifre sıfırlama: e-posta girişten taşındı", (await s.getByLabel("E-posta").inputValue()) === "ayse@ornek.com");
+    await bekle(s, 800);   // doğrulama kodu resmi yüklenince alan sıfırlanır
+    await s.getByPlaceholder("Kodu yazın").fill("yanlis");
+    await s.getByRole("button", { name: "Kod gönder" }).click();
+    kontrol("şifre sıfırlama: yanlış doğrulama kodu reddedildi", await gorunur(s.getByText(/Dogrulama kodu hatali/)));
+    await bekle(s, 900);   // hatadan sonra yeni kod alınır
+    await s.getByPlaceholder("Kodu yazın").fill("k4Tm9");
+    await s.getByRole("button", { name: "Kod gönder" }).click();
+    kontrol("şifre sıfırlama: kod gönderildi ekranı (hesap varlığı söylenmiyor)", await gorunur(s.getByText(/ile bir hesap varsa doğrulama kodu gönderildi/)));
+    await foto(s, "musteri-09-sifre-sifirla"); await tasmaYok(s, "şifre sıfırlama");
+    await s.getByLabel("E-postadaki kod").fill("000000");
+    await s.getByLabel("Yeni şifre", { exact: true }).fill("YeniSifre2026");
+    await s.getByLabel("Yeni şifre (tekrar)").fill("YeniSifre2026");
+    await s.getByRole("button", { name: "Şifreyi değiştir" }).click();
+    kontrol("şifre sıfırlama: hatalı kod reddedildi", await gorunur(s.getByText("Kod hatali")));
+    await s.getByLabel("E-postadaki kod").fill("123456");
+    await s.getByLabel("Yeni şifre (tekrar)").fill("YeniSifre2025");
+    await s.getByRole("button", { name: "Şifreyi değiştir" }).click();
+    kontrol("şifre sıfırlama: şifreler aynı değilse gönderilmez", await gorunur(s.getByText("Şifreler aynı değil.")));
+    await s.getByLabel("Yeni şifre (tekrar)").fill("YeniSifre2026");
+    await s.getByRole("button", { name: "Şifreyi değiştir" }).click();
+    kontrol("şifre sıfırlama: başarı → giriş ekranı, mesaj ve e-posta dolu", await gorunur(s.getByText(/Şifreniz değiştirildi/))
+      && (await s.getByLabel("E-posta").inputValue()) === "ayse@ornek.com");
+
+    // Gizlilik sayfası oturumsuz açılır
+    await s.goto(M + "/gizlilik#hesap-silme"); await bekle(s, 600);
+    kontrol("gizlilik: oturumsuz açılıyor, üç bölüm var", await gorunur(s.getByRole("heading", { name: /Aydınlatma Metni/ }))
+      && await s.getByRole("heading", { name: /Açık Rıza/ }).isVisible() && await s.getByRole("heading", { name: /Hesabınızı ve Verilerinizi Silme/ }).isVisible());
+    kontrol("gizlilik: KVKK m.11 hakları ve saklama süreleri yazıyor", await s.getByText(/KVKK m\.11/).isVisible() && await s.getByText(/35 gün/).first().isVisible());
+    await foto(s, "musteri-10-gizlilik"); await tasmaYok(s, "gizlilik");
     await b.close();
   }
 

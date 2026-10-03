@@ -6,7 +6,9 @@ import Kabuk from "./bilesenler/Kabuk";
 import { Iskelet } from "./bilesenler/VeriDurumu";
 import { ToastSaglayici } from "./bilesenler/Toast";
 import Giris from "./sayfalar/Giris";
+import SifreSifirla from "./sayfalar/SifreSifirla";
 import Kayit from "./sayfalar/Kayit";
+import Gizlilik from "./sayfalar/Gizlilik";
 import { oturumOku } from "./api/oturum";
 import { AyarlarSaglayici } from "./api/ayarlar";
 import { SohbetSaglayici } from "./api/sohbetler";
@@ -40,6 +42,8 @@ export default function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/giris" element={<Giris />} />
+              <Route path="/sifre-sifirla" element={<SifreSifirla />} />
+              <Route path="/gizlilik" element={<Gizlilik />} />
               <Route path="/kayit" element={<Kayit />} />
               <Route path="/*" element={<Korumali><SohbetSaglayici><Uygulama /></SohbetSaglayici></Korumali>} />
             </Routes>

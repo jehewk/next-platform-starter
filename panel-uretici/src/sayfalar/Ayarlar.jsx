@@ -4,6 +4,7 @@ import { Moon, Sun, Monitor, Check } from "lucide-react";
 import { SayfaBasligi } from "../bilesenler/Kart";
 import { useAyarlar, VARSAYILAN } from "../api/ayarlar";
 import { oturumOku, oturumSil } from "../api/oturum";
+import { useBildirim } from "../api/bildirim";
 
 export default function Ayarlar() {
   const { ayarlar, guncelle, sifirla } = useAyarlar();
@@ -49,6 +50,7 @@ export default function Ayarlar() {
           deger={ayarlar.bildirimBasvuru} degis={(v) => guncelle({ bildirimBasvuru: v })} />
         <Anahtar etiket="Garanti talepleri" aciklama="İnceleme bekleyen garanti talepleri."
           deger={ayarlar.bildirimGaranti} degis={(v) => guncelle({ bildirimGaranti: v })} />
+        <AnlikBildirim />
       </Bolum>
 
       <Bolum baslik="Veri ve oturum">
@@ -146,6 +148,33 @@ function EsikOnizleme({ uyari, kritik }) {
       <div className="mt-1.5 flex justify-between text-2xs text-sonuk">
         <span>0</span><span>Kritik &lt; {kritik}</span><span>İzleme &lt; {uyari}</span><span>100</span>
       </div>
+    </div>
+  );
+}
+
+/** Telefon/bilgisayar bildirimi (Web Push): cihaz susunca, kritikleşince, ısınınca. */
+function AnlikBildirim() {
+  const { durum, mesgul, hata, degistir } = useBildirim();
+  if (!durum || durum === "yok") return null;
+  const aciklama = hata || {
+    acik: "Sahada bir cihaz veri göndermeyi bırakınca, kritikleşince ya da aşırı ısınınca bu cihaza bildirim gelir.",
+    kapali: "Panel kapalıyken de saha uyarılarını bu cihaza bildirim olarak al.",
+    engelli: "Bildirimler tarayıcı ayarlarında engellenmiş; bu site için izin verip sayfayı yenileyin.",
+    "ana-ekran": "iPhone'da önce paneli ana ekrana ekleyin (Paylaş → Ana Ekrana Ekle) ve oradan açın.",
+  }[durum];
+  return (
+    <div className="flex items-start justify-between gap-4 border-t border-cizgi pt-5">
+      <span>
+        <span className="block text-sm">Anlık bildirim (bu cihaz)</span>
+        <span className={`block text-xs ${hata ? "text-kritik" : "text-sonuk"}`}>{aciklama}</span>
+      </span>
+      {(durum === "acik" || durum === "kapali") && (
+        <button type="button" role="switch" aria-checked={durum === "acik"} aria-label="Anlık bildirim" onClick={degistir} disabled={mesgul}
+          className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-60 ${durum === "acik" ? "bg-saglikli" : "bg-cizgi"}`}>
+          <span className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+            durum === "acik" ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+        </button>
+      )}
     </div>
   );
 }

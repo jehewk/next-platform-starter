@@ -4,6 +4,7 @@ import { ArrowUp, Copy, Check, Sparkles, ImagePlus, X } from "lucide-react";
 import { useSohbet } from "../api/sohbetler";
 import { ORNEK_SORULAR } from "../api/asistan";
 import { fotografHazirla } from "../api/gorsel";
+import { useRiza } from "../api/riza";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, Tooltip, ResponsiveContainer } from "recharts";
 import { useGrafikRenkleri, Ipucu } from "./Grafik";
 
@@ -15,6 +16,7 @@ export default function SohbetPaneli({ kompakt = false }) {
   const { aktif, bekliyor, gonder } = useSohbet();
   const [giris, setGiris] = useState("");
   const [ek, setEk] = useState(null);           // {tur, veri, onizleme}
+  const [riza, rizaVer] = useRiza();
   const [ekHata, setEkHata] = useState("");
   const dosya = useRef(null);
   const alan = useRef(null);
@@ -81,6 +83,16 @@ export default function SohbetPaneli({ kompakt = false }) {
       </div>
 
       <div className={`border-t border-cizgi ${kompakt ? "p-3" : "px-4 py-3 sm:px-8"} pb-[max(0.75rem,env(safe-area-inset-bottom))]`}>
+        {!riza && (
+          <div className={`mx-auto mb-2 rounded-lg border border-cizgi bg-panel2/60 px-3 py-2.5 text-xs leading-relaxed text-soluk ${kompakt ? "" : "max-w-3xl"}`}>
+            Sisteminizle ilgili soruları burada, verileriniz dışarı çıkmadan yanıtlarım. Genel sorular ve fotoğraflar
+            için yanıtın Google'dan (ABD) alınmasına izin verin.{" "}
+            <a href="/gizlilik#acik-riza" className="text-metin underline underline-offset-2">Ayrıntılar</a>
+            <button onClick={() => rizaVer(true)} className="dugme-ikincil ml-0 mt-2 flex min-h-[40px] w-full sm:ml-2 sm:mt-0 sm:inline-flex sm:w-auto">
+              İzin veriyorum
+            </button>
+          </div>
+        )}
         {(ek || ekHata) && (
           <div className={`mx-auto mb-2 flex items-center gap-2.5 ${kompakt ? "" : "max-w-3xl"}`}>
             {ek && (
@@ -100,7 +112,8 @@ export default function SohbetPaneli({ kompakt = false }) {
         <div className={`mx-auto flex items-end gap-2 rounded-lg border border-cizgi bg-zemin p-2
                          focus-within:border-soluk/60 ${kompakt ? "" : "max-w-3xl"}`}>
           <input ref={dosya} type="file" accept="image/*" className="hidden" onChange={fotografSec} />
-          <button onClick={() => dosya.current?.click()} disabled={bekliyor} aria-label="Fotoğraf ekle" title="Fotoğraf ekle"
+          <button onClick={() => dosya.current?.click()} disabled={bekliyor || !riza} aria-label="Fotoğraf ekle"
+            title={riza ? "Fotoğraf ekle" : "Fotoğraf incelemesi için önce izin verin"}
             className="dugme-hayalet h-8 w-8 shrink-0 rounded-md p-0">
             <ImagePlus size={17} />
           </button>
