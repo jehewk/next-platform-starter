@@ -706,6 +706,108 @@ def yama_birlestir_uyari(kaynak):
     return kaynak, True
 
 
+_PROFIL_YARDIMCI = '''
+def _de_profil_guncelle(event, body):
+    """Musteri kendi profilini (adres/konum) gunceller; yalnizca kendi kaydi.
+    Konum lat/lng harita ignesinden gelir; kullanici koordinat girmez."""
+    k = _de_kullanici(event)
+    if not k:
+        return 401, {'hata': 'Oturum dogrulanamadi; yeniden giris yapin'}
+    if k.get('rol') != 'musteri' or not k.get('musteri_id'):
+        return 403, {'hata': 'Bu islem yalnizca musteri hesaplari icindir'}
+    setler, adlar, degerler = [], {}, {}
+    def _de_alan(ad, deger):
+        setler.append('#%s = :%s' % (ad, ad))
+        adlar['#%s' % ad] = ad
+        degerler[':%s' % ad] = deger
+    for ad, uz in (('adres', 300), ('il', 80), ('ilce', 80), ('posta_kodu', 20), ('telefon', 30)):
+        if ad in body:
+            _de_alan(ad, str(body.get(ad) or '')[:uz])
+    if body.get('lat') is not None and body.get('lng') is not None:
+        try:
+            _la = float(body['lat']); _lo = float(body['lng'])
+        except (TypeError, ValueError):
+            return 400, {'hata': 'Konum gecersiz'}
+        if not (-90 <= _la <= 90 and -180 <= _lo <= 180):
+            return 400, {'hata': 'Konum gecersiz'}
+        _de_alan('lat', Decimal(str(round(_la, 6))))
+        _de_alan('lng', Decimal(str(round(_lo, 6))))
+    if not setler:
+        return 400, {'hata': 'Guncellenecek alan yok'}
+    try:
+        dynamodb.Table(DE_MUSTERI).update_item(
+            Key={'musteri_id': k['musteri_id']},
+            UpdateExpression='SET ' + ', '.join(setler),
+            ExpressionAttributeNames=adlar, ExpressionAttributeValues=degerler)
+    except Exception as e:
+        print("profil guncelleme hatasi: %s: %s" % (type(e).__name__, e))
+        return 500, {'hata': 'Guncellenemedi; tekrar deneyin'}
+    return 200, {'ok': True}
+
+'''
+
+
+def yama_profil(kaynak):
+    """K) /de/profil/guncelle: müşteri kendi adres/konumunu günceller. Döner: (yeni, uygulandi)."""
+    if "/de/profil/guncelle" in kaynak:
+        print("YAMA: profil guncelleme ucu zaten var.")
+        return kaynak, False
+    if "_de_kullanici" not in kaynak:
+        raise YamaAtla("_de_kullanici bulunamadı; önce hesap uçları (yama F) uygulanmalı.")
+    for g in ("DE_MUSTERI", "def response", "Decimal", "dynamodb"):
+        if g not in kaynak:
+            raise YamaAtla(f"'{g}' bulunamadı.")
+    h = re.search(r"^def\s+lambda_handler\s*\(\s*(\w+)", kaynak, re.M)
+    capa = re.search(
+        r"""^([ \t]*)if\s+path\s*==\s*['"]/de/musteri/olustur['"]\s+and\s+method\s*==\s*['"]POST['"]\s*:""",
+        kaynak, re.M)
+    if not (h and capa):
+        raise YamaAtla("lambda_handler ya da /de/musteri/olustur bulunamadı.")
+    olay, g = h.group(1), capa.group(1)
+    blok = (f"{g}if path == '/de/profil/guncelle' and method == 'POST':\n"
+            f"{g}    kod, govde = _de_profil_guncelle({olay}, body)\n"
+            f"{g}    return response(kod, govde)\n\n")
+    kaynak = kaynak[:capa.start()] + blok + kaynak[capa.start():]
+    h = re.search(r"^def\s+lambda_handler\s*\(", kaynak, re.M)
+    kaynak = kaynak[:h.start()] + _PROFIL_YARDIMCI.lstrip("\n") + "\n\n" + kaynak[h.start():]
+    print("YAMA: profil guncelleme ucu (/de/profil/guncelle) eklendi.")
+    return kaynak, True
+
+
+def yama_kayit_konum(kaynak):
+    """L) Kayıtta seçilen harita konumu (lat/lng) müşteri kaydına yazılır. Döner: (yeni, uygulandi)."""
+    if "DE_KAYIT_KONUM" in kaynak:
+        print("YAMA: kayit konum zaten var.")
+        return kaynak, False
+    k = blok_bul(kaynak, "/de/musteri/kayit")
+    if not k:
+        raise YamaAtla("'/de/musteri/kayit' işleyicisi bulunamadı.")
+    if "Decimal" not in kaynak:
+        raise YamaAtla("Decimal bulunamadı.")
+    blok = kaynak[k[0]:k[1]]
+    su = blok.find("sign_up(")
+    hedef = re.compile(r"^([ \t]*)(?:# KVKK|# DE_KAYIT_KONUM|# Otomatik onay|return\s+response\(\s*200\b)",
+                       re.M).search(blok, su if su >= 0 else 0)
+    if su < 0 or not hedef or not re.search(r"^\s*musteri_id\s*=", blok[:hedef.start()], re.M):
+        raise YamaAtla("kayıt işleyicisinde sign_up sonrası musteri_id/başarılı yanıt bulunamadı.")
+    g = hedef.group(1)
+    yaz = (f"{g}# DE_KAYIT_KONUM: kayitta secilen harita konumu (varsa) kaydedilir\n"
+           f"{g}try:\n"
+           f"{g}    _la = body.get('lat'); _lo = body.get('lng')\n"
+           f"{g}    if _la is not None and _lo is not None and -90 <= float(_la) <= 90 and -180 <= float(_lo) <= 180:\n"
+           f"{g}        dynamodb.Table(DE_MUSTERI).update_item(\n"
+           f"{g}            Key={{'musteri_id': musteri_id}},\n"
+           f"{g}            UpdateExpression='SET lat = :la, lng = :lo',\n"
+           f"{g}            ExpressionAttributeValues={{':la': Decimal(str(round(float(_la), 6))),\n"
+           f"{g}                                       ':lo': Decimal(str(round(float(_lo), 6)))}})\n"
+           f"{g}except Exception as e:\n"
+           f"{g}    print('kayit konum yazilamadi: %s' % e)\n")
+    blok = blok[:hedef.start()] + yaz + blok[hedef.start():]
+    kaynak = kaynak[:k[0]] + blok + kaynak[k[1]:]
+    print("YAMA: kayit konum yazimi eklendi.")
+    return kaynak, True
+
+
 def main():
     if len(sys.argv) == 3 and sys.argv[1] in ("--olcum-tablolari", "--olcum-tablosu"):
         try:
@@ -727,7 +829,9 @@ def main():
                      ("asistan ucu", yama_asistan), ("hesap uclari", yama_hesap),
                      ("e-posta dogrulama", yama_eposta_dogrula), ("KVKK onayi", yama_kvkk),
                      ("sayfalama", yama_sayfalama),
-                     ("birlestir uyari korumasi", yama_birlestir_uyari)):
+                     ("birlestir uyari korumasi", yama_birlestir_uyari),
+                     ("profil guncelleme", yama_profil),
+                     ("kayit konum", yama_kayit_konum)):
         try:
             kaynak, u = yama(kaynak)
             uygulandi.append(u)

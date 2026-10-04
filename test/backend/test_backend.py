@@ -51,7 +51,8 @@ def yamali_backend():
             ("otomatik onay", yamala.yama_otomatik_onay, False), ("olcum TTL", yamala.yama_olcum_ttl, True),
             ("asistan", yamala.yama_asistan, False), ("hesap", yamala.yama_hesap, False),
             ("eposta", yamala.yama_eposta_dogrula, False), ("kvkk", yamala.yama_kvkk, False),
-            ("sayfalama", yamala.yama_sayfalama, False)):
+            ("sayfalama", yamala.yama_sayfalama, False),
+            ("profil", yamala.yama_profil, False), ("kayit konum", yamala.yama_kayit_konum, False)):
         try:
             kaynak, _ = f(kaynak)
         except yamala.YamaAtla as e:
@@ -249,6 +250,46 @@ def test_hesap_entegrasyon():
     ok("hesap silme: şifreyle, yalnız müşteri; kayıt+hesap silinir, cihaz ayrılır ama kalır")
 
 
+# ═══════════════════ C1b. Profil / konum güncelleme (yama K, L) ═══════════════════
+
+def test_profil():
+    mod, dyn, cog, _ = yukle()
+    tohum(dyn, cog)
+    M = dyn.t['dennis-musteriler']
+
+    # Oturum + müşteri rolü + geçerli konum şart
+    es(istek(mod, '/de/profil/guncelle', {'lat': 37, 'lng': 35})[0], 401, "oturumsuz profil")
+    es(istek(mod, '/de/profil/guncelle', {'lat': 37, 'lng': 35}, token=URE)[0], 403, "üretici profil (müşteri değil)")
+    es(istek(mod, '/de/profil/guncelle', {'lat': 999, 'lng': 35}, token=MUS)[0], 400, "geçersiz enlem")
+    es(istek(mod, '/de/profil/guncelle', {}, token=MUS)[0], 400, "boş gövde")
+    ok("profil güncelleme: oturum/rol/konum doğrulaması")
+
+    # Müşteri kendi adres+konumunu yazar; kayıtta görünür
+    k, g = istek(mod, '/de/profil/guncelle', {'lat': 37.0, 'lng': 35.3213, 'adres': 'Yeni Mah'}, token=MUS)
+    es(k, 200, g)
+    kayit = M.get_item(Key={'musteri_id': 'MST-1'})['Item']
+    assert abs(float(kayit['lat']) - 37.0) < 1e-6 and abs(float(kayit['lng']) - 35.3213) < 1e-6, f"konum yazılmadı: {kayit}"
+    es(kayit['adres'], 'Yeni Mah', "adres güncellenmedi")
+    # Başka müşterinin kaydına dokunmaz (JWT'deki kendi musteri_id'siyle sınırlı)
+    assert 'lat' not in M.get_item(Key={'musteri_id': 'MST-2'}).get('Item', {}), "başka müşteri kaydı etkilendi!"
+    ok("profil güncelleme: müşteri yalnız kendi adres/konumunu değiştirir, haritada görünür")
+
+
+def test_kayit_konum():
+    mod, dyn, cog, _ = yukle()
+    tohum(dyn, cog)
+    M = dyn.t['dennis-musteriler']
+    govde = {'ad': 'Zehra', 'soyad': 'Kaya', 'eposta': 'zehra@x.com', 'sifre': 'Zehra123',
+             'telefon': '05551234567', 'il': 'Adana', 'ilce': 'Seyhan', 'adres': 'X mah',
+             'urun': 'aku', 'kvkk_aydinlatma': True, 'lat': 37.0, 'lng': 35.3213}
+    k, g = istek(mod, '/de/musteri/kayit', govde)
+    es(k, 200, g)
+    kayit = M.get_item(Key={'musteri_id': g['musteri_id']})['Item']
+    assert abs(float(kayit.get('lat', 0)) - 37.0) < 1e-6 and abs(float(kayit.get('lng', 0)) - 35.3213) < 1e-6, \
+        f"kayıtta konum yazılmadı: {kayit}"
+    ok("kayıt: seçilen harita konumu (lat/lng) yeni müşteri kaydına yazıldı")
+
+
 # ═══════════════════ C2. Bildirim aboneliği güvenliği (SSRF) ═══════════════════
 
 def test_bildirim_ssrf():
@@ -419,7 +460,8 @@ def test_yama_duzeltmeleri():
 
 
 if __name__ == '__main__':
-    for test in (test_yetki, test_veri_akisi, test_hesap_entegrasyon, test_bildirim_ssrf, test_dayaniklilik, test_yuk, test_yama_duzeltmeleri):
+    for test in (test_yetki, test_veri_akisi, test_hesap_entegrasyon, test_profil, test_kayit_konum,
+                 test_bildirim_ssrf, test_dayaniklilik, test_yuk, test_yama_duzeltmeleri):
         print(f"\n{test.__name__}")
         test()
     print(f"\nHEPSİ TAMAM ({len(GECEN)} kontrol)")
