@@ -1,0 +1,11 @@
+{
+  "name": "daly",
+  "author": "Dennis Energy",
+  "pins": [
+    "RX",
+    "TX",
+    "FAULT",
+    "GND"
+  ],
+  "controls": []
+}
