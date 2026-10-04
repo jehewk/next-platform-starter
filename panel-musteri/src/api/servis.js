@@ -182,6 +182,15 @@ export async function musteriBul(musteriId) {
   return hepsi.find((m) => m.id === musteriId) || null;
 }
 
+/**
+ * Müşteri kendi profilini günceller (adres/konum). Backend yalnızca oturum
+ * sahibinin KENDİ kaydını değiştirir (POST /de/profil/guncelle).
+ * alanlar: { lat, lng, adres?, il?, ilce?, posta_kodu?, telefon? }
+ */
+export async function profilGuncelle(alanlar) {
+  return api.post("/de/profil/guncelle", alanlar);
+}
+
 // ══════════════════ GARANTİ ══════════════════
 
 function garantiUyarla(g) {

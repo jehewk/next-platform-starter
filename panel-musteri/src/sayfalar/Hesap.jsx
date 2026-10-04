@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { LogOut, Moon, Sun, Monitor, MapPin, Phone, Mail, Bell, Sparkles, ShieldCheck, Trash2, Loader2, ChevronRight } from "lucide-react";
 import Modal from "../bilesenler/Modal";
@@ -7,7 +7,8 @@ import { useBildirim } from "../api/bildirim";
 import { useRiza } from "../api/riza";
 import { Iskelet } from "../bilesenler/VeriDurumu";
 import { useVeri } from "../api/useVeri";
-import { musteriListesi } from "../api/servis";
+import { musteriListesi, profilGuncelle } from "../api/servis";
+import KonumSecici from "../bilesenler/KonumSecici";
 import { oturumOku, oturumSil } from "../api/oturum";
 import { useAyarlar } from "../api/ayarlar";
 
@@ -17,9 +18,34 @@ export default function Hesap() {
   const git = useNavigate();
   const oturum = oturumOku();
   const { ayarlar, guncelle } = useAyarlar();
-  const { veri: musteriler, yukleniyor } = useVeri(musteriListesi);
+  const { veri: musteriler, yukleniyor, yenile } = useVeri(musteriListesi);
   const p = musteriler?.[0];
   const [silAcik, setSilAcik] = useState(false);
+
+  // Konum: kayıtlı değer haritaya seed edilir; kullanıcı iğneyi taşıyıp kaydeder.
+  const [konum, setKonum] = useState(null);
+  const [konumKaydediyor, setKonumKaydediyor] = useState(false);
+  const [konumMesaj, setKonumMesaj] = useState("");
+  useEffect(() => {
+    if (p && p.lat != null && p.lng != null && konum == null) {
+      setKonum({ lat: Number(p.lat), lng: Number(p.lng) });
+    }
+  }, [p, konum]);
+
+  async function konumKaydet() {
+    if (!konum) return;
+    setKonumKaydediyor(true);
+    setKonumMesaj("");
+    try {
+      await profilGuncelle({ lat: konum.lat, lng: konum.lng });
+      setKonumMesaj("Konumunuz kaydedildi; cihazlarınız saha haritasında görünecek.");
+      yenile?.();
+    } catch (e) {
+      setKonumMesaj(e.message || "Konum kaydedilemedi; tekrar deneyin.");
+    } finally {
+      setKonumKaydediyor(false);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -33,9 +59,25 @@ export default function Hesap() {
             {p?.telefon && <p className="flex gap-2"><Phone size={15} className="mt-0.5 shrink-0" />{p.telefon}</p>}
             <p className="flex gap-2"><Mail size={15} className="mt-0.5 shrink-0" />{p?.email || oturum?.eposta}</p>
           </div>
-          <p className="mt-3 text-xs text-sonuk">Bilgileriniz değiştiyse Destek sekmesinden bize bildirin.</p>
+          <p className="mt-3 text-xs text-sonuk">Ad, telefon ve e-posta değişikliği için Destek sekmesinden bize bildirin.</p>
         </section>
       )}
+
+      <section className="rounded-xl border border-cizgi bg-panel p-5">
+        <h2 className="flex items-center gap-2 text-sm font-semibold"><MapPin size={16} /> Konumum</h2>
+        <p className="mt-1 text-xs text-soluk">
+          Cihazlarınız üretici ekibinin saha haritasında bu konumda görünür. Haritada evinize
+          dokunun ya da “Konumumu bul” ile otomatik seçin.
+        </p>
+        <div className="mt-3">
+          <KonumSecici value={konum} onChange={setKonum} />
+        </div>
+        <button onClick={konumKaydet} disabled={!konum || konumKaydediyor}
+          className="dugme-ana mt-3 min-h-[44px] w-full">
+          {konumKaydediyor && <Loader2 size={15} className="animate-spin" />} Konumu kaydet
+        </button>
+        {konumMesaj && <p className="mt-2 text-xs text-soluk">{konumMesaj}</p>}
+      </section>
 
       <section className="rounded-xl border border-cizgi bg-panel p-5">
         <p className="text-sm font-medium">Görünüm</p>

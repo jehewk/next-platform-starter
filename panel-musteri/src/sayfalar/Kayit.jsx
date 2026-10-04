@@ -5,6 +5,7 @@ import Logo from "../bilesenler/Logo";
 import { kayitBasvurusu } from "../api/servis";
 import { KVKK_SURUM } from "../veri/kvkk";
 import { rizaAyarla } from "../api/riza";
+import KonumSecici from "../bilesenler/KonumSecici";
 
 /**
  * Kayıt başvurusu — POST /de/musteri/kayit (DEVIR §6).
@@ -41,6 +42,7 @@ export default function Kayit() {
     ad: "", soyad: "", eposta: "", sifre: "", telefon: "",
     il: "", ilce: "", adres: "", posta_kodu: "", urun: "ikisi",
   });
+  const [konum, setKonum] = useState(null);   // { lat, lng } — haritadan seçilir
   const [aydinlatma, setAydinlatma] = useState(false);
   const [riza, setRiza] = useState(false);
   const [hata, setHata] = useState(null);
@@ -59,6 +61,7 @@ export default function Kayit() {
     try {
       const temiz = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, k === "sifre" ? v : v.trim()]));
       temiz.eposta = temiz.eposta.toLowerCase();
+      if (konum) { temiz.lat = konum.lat; temiz.lng = konum.lng; }
       const c = await kayitBasvurusu({ ...temiz, kvkk_aydinlatma: true, kvkk_surum: KVKK_SURUM, yurtdisi_riza: riza });
       rizaAyarla(riza);
       // Backend otomatik onay açıksa hesap hemen açılır (otomatik_onay: true)
@@ -117,6 +120,10 @@ export default function Kayit() {
         <Alan etiket="İlçe"><input required autoComplete="address-level2" {...alan("ilce")} className="girdi" /></Alan>
         <Alan etiket="Adres" tam><input required autoComplete="street-address" {...alan("adres")} className="girdi" /></Alan>
         <Alan etiket="Posta kodu"><input inputMode="numeric" autoComplete="postal-code" {...alan("posta_kodu")} className="girdi" /></Alan>
+        <Alan etiket="Konum (saha haritası için)" tam grup>
+          <KonumSecici value={konum} onChange={setKonum} />
+          <p className="mt-1 text-xs text-sonuk">İsteğe bağlı; sonra hesabınızdan da ekleyebilirsiniz.</p>
+        </Alan>
         <Alan etiket="Ürün" tam grup>
           <div className="grid grid-cols-3 gap-2">
             {URUNLER.map((u) => (
