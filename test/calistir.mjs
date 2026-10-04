@@ -24,6 +24,8 @@ const python = ["python3", "python"].find(varMi);
 
 const testler = [
   { ad: "Ayrıştırıcı (sohbet niyet çözümü)", komut: "node", arg: ["test/ayristirici.mjs"] },
+  { ad: "Fizik motoru (bozulma + arıza kaynağı senaryoları)", komut: python, arg: ["test/backend/test_fizik.py"],
+    atla: python ? null : "python3 bulunamadı" },
   { ad: "Backend (yetki, veri akışı, güvenlik, yük)", komut: python, arg: ["test/backend/test_backend.py"],
     atla: python ? null : "python3 bulunamadı" },
   { ad: "Uçtan uca (tarayıcı, sahte API)", komut: "node", arg: ["test/e2e.mjs"],
