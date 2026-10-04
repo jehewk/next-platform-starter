@@ -50,7 +50,8 @@ def yamali_backend():
     for ad, f, atlanabilir in (
             ("otomatik onay", yamala.yama_otomatik_onay, False), ("olcum TTL", yamala.yama_olcum_ttl, True),
             ("asistan", yamala.yama_asistan, False), ("hesap", yamala.yama_hesap, False),
-            ("eposta", yamala.yama_eposta_dogrula, False), ("kvkk", yamala.yama_kvkk, False)):
+            ("eposta", yamala.yama_eposta_dogrula, False), ("kvkk", yamala.yama_kvkk, False),
+            ("sayfalama", yamala.yama_sayfalama, False)):
         try:
             kaynak, _ = f(kaynak)
         except yamala.YamaAtla as e:
@@ -361,8 +362,64 @@ def test_yuk():
     ok("yük altında müşteri izolasyonu korunuyor")
 
 
+
+# ═══════════════════ F. Yama düzeltmeleri (regresyon) ═══════════════════
+
+def test_yama_duzeltmeleri():
+    sys.path.insert(0, str(KOK / "aws" / "ekler"))
+    import yamala, types
+
+    # 1) Ölçüm TTL: iki ayrı ölçüm tablosunu da kapsar, cihaz tablosuna dokunmaz,
+    #    ve 'tablo = tablo' gibi bozuk kod üretmez (eski hata).
+    src = ("import os, json, boto3\n"
+           "dynamodb = boto3.resource('dynamodb')\n"
+           "DE_CIHAZ = 'dennis-cihazlar'\n"
+           "DE_AKU_VERI = 'dennis-aku-verileri'\n"
+           "DE_INV_VERI = 'dennis-inverter-verileri'\n"
+           "def de_cihaz_bul(c):\n    return dynamodb.Table(DE_CIHAZ).get_item(Key={'cihaz_id': c}).get('Item')\n"
+           "def lambda_handler(event, context):\n"
+           "    path = event.get('path')\n"
+           "    if path == '/de/cihaz/liste':\n"
+           "        return {'b': dynamodb.Table(DE_CIHAZ).scan().get('Items', [])}\n"
+           "    if path == '/de/cihaz/gecmis':\n"
+           "        cihaz = de_cihaz_bul('x')\n"
+           "        tablo = DE_AKU_VERI if cihaz.get('tip') == 'aku' else DE_INV_VERI\n"
+           "        return {'o': dynamodb.Table(tablo).query(KeyConditionExpression='cihaz_id = :c', ExpressionAttributeValues={':c': 'x'})}\n")
+    yeni, _ = yamala.yama_olcum_ttl(src)
+    assert "tablo = tablo" not in yeni, "bozuk self-referans geri geldi!"
+    import re as _re
+    kume = _re.search(r"_OLCUM_TTL_TABLOLARI = (\{[^}]*\})", yeni).group(1)
+    assert "dennis-aku-verileri" in kume and "dennis-inverter-verileri" in kume and "dennis-cihazlar" not in kume, kume
+    caglar = []
+    ev = types.SimpleNamespace(events=types.SimpleNamespace(register=lambda ad, fn: caglar.append(fn)))
+    dyn = types.SimpleNamespace(meta=types.SimpleNamespace(client=types.SimpleNamespace(meta=ev)),
+                                Table=lambda ad: types.SimpleNamespace(get_item=lambda **k: {}, query=lambda **k: {}))
+    sahte = types.ModuleType("boto3"); sahte.resource = lambda *a, **k: dyn; sahte.client = lambda *a, **k: None
+    eski_boto = sys.modules.get("boto3"); sys.modules["boto3"] = sahte
+    try:
+        os.environ["OLCUM_SAKLAMA_GUN"] = "180"
+        m = types.ModuleType("ttl"); exec(compile(yeni, "ttl", "exec"), m.__dict__)
+        fn = caglar[0]
+        for tbl, bekle in (("dennis-aku-verileri", True), ("dennis-inverter-verileri", True), ("dennis-cihazlar", False)):
+            p2 = {"TableName": tbl, "Item": {"cihaz_id": "x"}}; fn(p2)
+            es(("silinme" in p2["Item"]), bekle, f"TTL {tbl}")
+    finally:
+        if eski_boto is not None:
+            sys.modules["boto3"] = eski_boto
+    ok("ölçüm TTL: iki ölçüm tablosunu da kapsar, cihaz tablosuna dokunmaz, bozuk kod üretmez")
+
+    # 2) Sayfalama: sayfalanmamış scan _de_tara ile sayfalanır (eksik sayım hatası)
+    src2 = ("import boto3\ndynamodb = boto3.resource('dynamodb')\nDE_CIHAZ='dennis-cihazlar'\n"
+            "def lambda_handler(event, context):\n"
+            "    return {'c': dynamodb.Table(DE_CIHAZ).scan().get('Items', [])}\n")
+    yeni2, u = yamala.yama_sayfalama(src2)
+    assert u and "scan().get('Items', [])" not in yeni2 and "_de_tara(dynamodb.Table(DE_CIHAZ))" in yeni2
+    compile(yeni2, "sf", "exec")
+    ok("sayfalama: Table(X).scan().get('Items', []) → _de_tara(...) ile sayfalanır")
+
+
 if __name__ == '__main__':
-    for test in (test_yetki, test_veri_akisi, test_hesap_entegrasyon, test_bildirim_ssrf, test_dayaniklilik, test_yuk):
+    for test in (test_yetki, test_veri_akisi, test_hesap_entegrasyon, test_bildirim_ssrf, test_dayaniklilik, test_yuk, test_yama_duzeltmeleri):
         print(f"\n{test.__name__}")
         test()
     print(f"\nHEPSİ TAMAM ({len(GECEN)} kontrol)")

@@ -10,6 +10,7 @@ Burada doğrulanan kurallar gerçek backend'de de geçerli olmalıdır:
   · CIHAZ_ENDPOINTLERI dışındaki her yol oturum ister (oturumsuz → 401)
   · ROL_IZIN'deki yollar yalnızca o rollere açıktır (müşteri → 403)
   · Müşteri oturumunda okuma uçları kullanici['musteri_id'] ile süzülür
+  (Pano okumaları gerçek backend gibi sayfalanmamış scan kullanır; yama_sayfalama düzeltir.)
   · Cihaz ölçümü cihaz anahtarıyla doğrulanır; türetilmiş alanlar sunucuda hesaplanır
 """
 import json
@@ -82,20 +83,6 @@ def _say(x):
     return Decimal(str(x))
 
 
-def _tara(tablo, **arg):
-    """Tabloyu sayfalayarak TAMAMEN tarar. scan tek sayfa döndürür; büyük tabloda
-    LastEvaluatedKey izlenmezse pano eksik sayar (DEVIR §9 notu)."""
-    ogeler, devam = [], None
-    while True:
-        if devam:
-            arg['ExclusiveStartKey'] = devam
-        s = tablo.scan(**arg)
-        ogeler += s.get('Items', [])
-        devam = s.get('LastEvaluatedKey')
-        if not devam:
-            return ogeler
-
-
 def lambda_handler(event, context):
     path = event.get('path', '').replace('/prod', '')
     method = event.get('httpMethod')
@@ -164,7 +151,7 @@ def lambda_handler(event, context):
 
     # ── Pano okumaları (müşteri oturumunda kendi verisiyle süzülür) ──
     if path == '/de/cihaz/liste' and method == 'GET':
-        hepsi = _tara(dynamodb.Table(DE_CIHAZ))
+        hepsi = dynamodb.Table(DE_CIHAZ).scan().get('Items', [])
         if musteri:
             hepsi = [c for c in hepsi if c.get('musteri_id') == musteri]
         for c in hepsi:
@@ -195,7 +182,7 @@ def lambda_handler(event, context):
         return response(200, {'olcumler': olcumler})
 
     if path == '/de/ozet' and method == 'GET':
-        cihazlar = _tara(dynamodb.Table(DE_CIHAZ))
+        cihazlar = dynamodb.Table(DE_CIHAZ).scan().get('Items', [])
         if musteri:
             cihazlar = [c for c in cihazlar if c.get('musteri_id') == musteri]
         say = lambda f: sum(1 for c in cihazlar if f(c))
@@ -205,7 +192,7 @@ def lambda_handler(event, context):
             'uyarida': say(lambda c: c.get('durum') == 'uyari')}})
 
     if path == '/de/musteri/liste' and method == 'GET':
-        hepsi = _tara(dynamodb.Table(DE_MUSTERI))
+        hepsi = dynamodb.Table(DE_MUSTERI).scan().get('Items', [])
         if musteri:
             hepsi = [m for m in hepsi if m.get('musteri_id') == musteri]
         return response(200, {'musteriler': hepsi})

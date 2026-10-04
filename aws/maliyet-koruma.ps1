@@ -254,38 +254,40 @@ if (-not $OlcumSaklamaGun) {
     Expand-Archive $zip -DestinationPath (Join-Path $is "k") -Force
     $arac = Join-Path (Join-Path $PSScriptRoot "ekler") "yamala.py"
     $eski = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    $cikti = & $PYTHON[0] @(@($PYTHON | Select-Object -Skip 1) + @($arac, "--olcum-tablosu", (Join-Path (Join-Path $is "k") "lambda_function.py"))) 2>&1
+    $cikti = & $PYTHON[0] @(@($PYTHON | Select-Object -Skip 1) + @($arac, "--olcum-tablolari", (Join-Path (Join-Path $is "k") "lambda_function.py"))) 2>&1
     $kod = $LASTEXITCODE; $ErrorActionPreference = $eski
     Remove-Item $is -Recurse -Force -ErrorAction SilentlyContinue
     if ($kod -ne 0) { throw "Ölçüm tablosu belirlenemedi: $(($cikti | Out-String).Trim())" }
     $bilgi = ($cikti | Where-Object { "$_".StartsWith("{") } | Select-Object -Last 1) | ConvertFrom-Json
-    $tablo = $bilgi.deger
-    if (-not $tablo -and $bilgi.ortam) {
-      $v = (Cagir lambda get-function-configuration --function-name $LAMBDA).Environment.Variables
-      $tablo = if ($v -and $v.PSObject.Properties[$bilgi.ortam]) { $v.PSObject.Properties[$bilgi.ortam].Value } else { $bilgi.varsayilan }
-    }
-    if (-not $tablo) { throw "Ölçüm tablosunun adı çözülemedi (kodda: $($bilgi.ifade))." }
+    # Gerçek backend akü ve inverter ölçümlerini ayrı tablolarda tutar; ikisinde de TTL açılır
+    $olcumTablolari = @($bilgi.adlar)
+    if (-not $olcumTablolari.Count) { throw "Ölçüm tablosunun adı çözülemedi (kodda: $($bilgi.ifade))." }
     if (-not $tablolar.Count) { $tablolar = @((Cagir dynamodb list-tables).TableNames) }
-    if ($tablolar -notcontains $tablo) { throw "Ölçüm tablosu '$tablo' bu bölgede yok." }
-    Tamam "ölçüm tablosu: $tablo"
+    foreach ($t in $olcumTablolari) { if ($tablolar -notcontains $t) { throw "Ölçüm tablosu '$t' bu bölgede yok." } }
+    Tamam "ölçüm tabloları: $($olcumTablolari -join ', ')"
 
-    $ttl = (Cagir dynamodb describe-time-to-live --table-name $tablo).TimeToLiveDescription
     $alan = "silinme"
-    if ($ttl.TimeToLiveStatus -in @("ENABLED", "ENABLING")) { $alan = $ttl.AttributeName; Tamam "TTL açık (alan: $alan)" }
-    else { Plan "$tablo tablosunda TTL açılacak (alan: $alan)" }
+    foreach ($t in $olcumTablolari) {
+      $ttl = (Cagir dynamodb describe-time-to-live --table-name $t).TimeToLiveDescription
+      if ($ttl.TimeToLiveStatus -in @("ENABLED", "ENABLING")) { $alan = $ttl.AttributeName; Tamam "${t}: TTL açık (alan: $alan)" }
+      else { Plan "$t tablosunda TTL açılacak (alan: $alan)" }
+    }
     Plan "Lambda yaması: ölçüm kayıtlarına silinme zamanı eklenir (zaten varsa atlanır)"
     Plan "Lambda ortamı: OLCUM_SAKLAMA_GUN=$OlcumSaklamaGun, OLCUM_TTL_ALANI=$alan"
 
     if ($Uygula) {
       & (Join-Path $PSScriptRoot "hepsini-kur.ps1") -Atla backend, hesap, web -Onayla -TarayiciAcma -ApiTaban $ApiTaban -Bolge $Bolge -Profil $Profil
       if ($LASTEXITCODE) { throw "Lambda yaması uygulanamadı; yukarıdaki çıktıya bakın." }
-      if ($ttl.TimeToLiveStatus -notin @("ENABLED", "ENABLING")) {
-        Cagir dynamodb update-time-to-live --table-name $tablo --time-to-live-specification "Enabled=true,AttributeName=$alan" | Out-Null
-        Tamam "TTL açıldı"
+      foreach ($t in $olcumTablolari) {
+        $ttl = (Cagir dynamodb describe-time-to-live --table-name $t).TimeToLiveDescription
+        if ($ttl.TimeToLiveStatus -notin @("ENABLED", "ENABLING")) {
+          Cagir dynamodb update-time-to-live --table-name $t --time-to-live-specification "Enabled=true,AttributeName=$alan" | Out-Null
+          Tamam "${t}: TTL açıldı"
+        }
       }
       if (LambdaOrtamGuncelle @{ OLCUM_SAKLAMA_GUN = "$OlcumSaklamaGun"; OLCUM_TTL_ALANI = $alan }) { Tamam "Lambda ortamı güncellendi" }
       else { Tamam "Lambda ortamı zaten güncel" }
-      Kaydet "Ölçüm TTL" "$tablo, $OlcumSaklamaGun gün"
+      Kaydet "Ölçüm TTL" "$($olcumTablolari -join ', '), $OlcumSaklamaGun gün"
     }
   } catch { Uyari $_.Exception.Message; Kaydet "Ölçüm TTL" "HATA: $($_.Exception.Message)" }
 }

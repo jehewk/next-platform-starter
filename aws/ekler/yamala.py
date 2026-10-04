@@ -1,7 +1,7 @@
 """Canlı lambda_function.py'ye Dennis panellerinin ihtiyaç duyduğu yamaları uygular.
 
     python yamala.py <girdi/lambda_function.py> <cikti/lambda_function.py>
-    python yamala.py --olcum-tablosu <lambda_function.py>   (ölçüm tablosunu JSON yazar)
+    python yamala.py --olcum-tablolari <lambda_function.py>  (ölçüm tablolarını JSON dizi yazar)
 
 Çıkış kodları:
     0  en az bir yama uygulandı (çıktı yazıldı)
@@ -63,6 +63,10 @@ Yamalar (her biri bağımsız; zaten varsa atlanır):
   · Aydınlatma metni onayı (kvkk_aydinlatma) olmayan kayıt 400 ile reddedilir.
   · Onay zamanı, metin sürümü ve yurt dışı aktarım açık rızası müşteri
     kaydına yazılır (ispat yükü veri sorumlusundadır).
+
+ I) Sayfalanmamış scan düzeltmesi
+  · Panodaki `Table(X).scan().get('Items', [])` çağrıları sayfalı `_de_tara`
+    ile değiştirilir; tablo 1 MB'ı geçince pano eksik saymaz.
 
 Sonuç Python derleyicisinden geçirilir; hata varsa hiçbir şey yazılmaz.
 Girdi dosyasına asla dokunmaz.
@@ -301,28 +305,65 @@ def tablo_ifadeleri(kaynak, yol):
     return re.findall(TABLO_IFADESI, kaynak[k[0]:k[1]]) if k else []
 
 
-def olcum_tablosu(kaynak):
-    """/de/cihaz/gecmis işleyicisinin okuduğu tablo ifadesi ve çözümü."""
+def _ad_coz(kaynak, ifade):
+    """Bir Table(...) ifadesini somut tablo adı dizgelerine çözer.
+
+    Döner: isim kümesi. Çözülemeyen (dinamik) ifade boş küme döndürür.
+    Desteklenen biçimler: 'dize', MODUL_SABITI, os.environ.get('X','öntanım'),
+    ve 'A if ... else B' (iki ölçüm tablolu backend — akü/inverter) üzerinden
+    atanmış yerel değişken.
+    """
+    ifade = ifade.strip()
+    if ifade[:1] in ("'", '"'):
+        return {ifade.strip("'\"")}
+    m = re.match(r"""os\.(?:environ\.get|getenv)\(\s*['"][^'"]+['"]\s*,\s*['"]([^'"]*)['"]\s*\)""", ifade)
+    if m:
+        return {m.group(1)}                       # ortam öntanımı (kurulumda gerçek ad yazılır)
+    # modül sabiti ya da yerel değişken ataması: son atama kullanılır
+    atama = None
+    for m in re.finditer(r"^[ \t]*%s\s*=\s*([^\n#]+)" % re.escape(ifade), kaynak, re.M):
+        atama = m.group(1).strip()
+    if atama is None:
+        return set()
+    # "A if kosul else B" → A ve B ayrı ayrı çözülür
+    kos = re.match(r"^(.*?)\s+if\s+.*\selse\s+(.*)$", atama)
+    if kos:
+        return _ad_coz(kaynak, kos.group(1)) | _ad_coz(kaynak, kos.group(2))
+    if atama[:1] in ("'", '"'):
+        return {atama.strip("'\"")}
+    if re.match(r"^[A-Za-z_]\w*$", atama) and atama != ifade:
+        return _ad_coz(kaynak, atama)
+    return set()
+
+
+def olcum_tablolari(kaynak):
+    """/de/cihaz/gecmis'in okuduğu ölçüm tablolarının adları (küme).
+
+    Gerçek backend akü ve inverter ölçümlerini AYRI tablolarda tutar; ikisi de
+    döndürülür. Hiçbiri somut ada çözülemezse ya da cihaz tablosuyla çakışırsa
+    YamaAtla (bozuk/tehlikeli TTL kancası üretilmez)."""
     ifadeler = tablo_ifadeleri(kaynak, "/de/cihaz/gecmis")
     if not ifadeler:
         raise YamaAtla("'/de/cihaz/gecmis' işleyicisinde Table(...) bulunamadı; ölçüm tablosu belirlenemedi.")
-    ifade = ifadeler[0]
-    if ifade in tablo_ifadeleri(kaynak, "/de/cihaz/liste"):
-        raise YamaAtla(f"ölçüm tablosu ({ifade}) cihaz listesiyle aynı; TTL cihaz kayıtlarını silerdi, uygulanmadı.")
-    sonuc = {"ifade": ifade, "deger": None, "ortam": None, "varsayilan": None}
-    sag = ifade
-    if not ifade[0] in "'\"":
-        m = re.search(r"^%s\s*=\s*([^\n#]+)" % re.escape(ifade), kaynak, re.M)
-        sag = m.group(1).strip() if m else ""
-    if sag[:1] in ("'", '"'):
-        sonuc["deger"] = sag.strip("'\"")
-    else:
-        m = re.match(r"""os\.(?:environ\.get|getenv)\(\s*['"]([^'"]+)['"]\s*(?:,\s*['"]([^'"]*)['"])?\s*\)""", sag) \
-            or re.match(r"""os\.environ\[\s*['"]([^'"]+)['"]\s*\]""", sag)
-        if m:
-            sonuc["ortam"] = m.group(1)
-            sonuc["varsayilan"] = m.group(2) if m.re.groups > 1 else None
-    return sonuc
+    adlar = set()
+    for ifade in ifadeler:
+        adlar |= _ad_coz(kaynak, ifade)
+    if not adlar:
+        raise YamaAtla("ölçüm tablosu adı çözülemedi (dinamik ifade); TTL kancası eklenmedi.")
+    cihaz_adlari = set()
+    for ifade in tablo_ifadeleri(kaynak, "/de/cihaz/liste"):
+        cihaz_adlari |= _ad_coz(kaynak, ifade)
+    cakisan = adlar & cihaz_adlari
+    if cakisan:
+        raise YamaAtla(f"ölçüm tablosu ({', '.join(cakisan)}) cihaz listesiyle aynı; "
+                       "TTL cihaz kayıtlarını silerdi, uygulanmadı.")
+    return adlar
+
+
+def olcum_tablosu(kaynak):
+    """Geriye dönük: tek ada çözümleme (--olcum-tablosu modu için)."""
+    adlar = sorted(olcum_tablolari(kaynak))
+    return {"ifade": adlar[0], "adlar": adlar}
 
 
 def yama_olcum_ttl(kaynak):
@@ -330,7 +371,7 @@ def yama_olcum_ttl(kaynak):
     if "def _olcum_ttl" in kaynak:
         print("YAMA: olcum TTL kancasi zaten var.")
         return kaynak, False
-    tablo = olcum_tablosu(kaynak)["ifade"]
+    adlar = sorted(olcum_tablolari(kaynak))
     kaynak_var = re.search(r"""^(\w+)\s*=\s*boto3\.resource\(\s*['"]dynamodb['"]""", kaynak, re.M)
     if not kaynak_var:
         raise YamaAtla("modül düzeyinde boto3.resource('dynamodb') bulunamadı; TTL kancası eklenmedi.")
@@ -338,9 +379,13 @@ def yama_olcum_ttl(kaynak):
     if not h:
         raise YamaAtla("'def lambda_handler' bulunamadı; TTL kancası eklenmedi.")
     d = kaynak_var.group(1)
-    kanca = f'''# Olcum kayitlarina TTL (aws/maliyet-koruma.ps1): {tablo} tablosuna yazilan
-# her kayda silinme zamani eklenir; DynamoDB eski olcumleri ucretsiz siler.
+    kume = "{" + ", ".join(repr(a) for a in adlar) + "}"
+    kanca = f'''# Olcum kayitlarina TTL (aws/maliyet-koruma.ps1): su tablolara yazilan her kayda
+# silinme zamani eklenir; DynamoDB eski olcumleri ucretsiz siler: {", ".join(adlar)}
 # OLCUM_SAKLAMA_GUN tanimsiz ya da 0 ise kapali.
+_OLCUM_TTL_TABLOLARI = {kume}
+
+
 def _olcum_ttl(params, **kwargs):
     try:
         gun = int(os.environ.get('OLCUM_SAKLAMA_GUN', '0') or 0)
@@ -349,11 +394,10 @@ def _olcum_ttl(params, **kwargs):
         alan = os.environ.get('OLCUM_TTL_ALANI', 'silinme')
         import time as _zaman
         son = int(_zaman.time()) + gun * 86400
-        tablo = {tablo}
-        if params.get('TableName') == tablo and isinstance(params.get('Item'), dict):
+        if params.get('TableName') in _OLCUM_TTL_TABLOLARI and isinstance(params.get('Item'), dict):
             params['Item'].setdefault(alan, son)
         for ad, istekler in (params.get('RequestItems') or {{}}).items():
-            if ad == tablo:
+            if ad in _OLCUM_TTL_TABLOLARI:
                 for istek in istekler:
                     kayit = (istek.get('PutRequest') or {{}}).get('Item')
                     if isinstance(kayit, dict):
@@ -373,7 +417,7 @@ except Exception as _e:
     kaynak = kaynak[:h.start()] + kanca + kaynak[h.start():]
     if not re.search(r"^import\s+[^\n]*\bos\b", kaynak, re.M):
         kaynak = "import os\n" + kaynak
-    print(f"YAMA: olcum TTL kancasi eklendi (tablo: {tablo}).")
+    print(f"YAMA: olcum TTL kancasi eklendi (tablolar: {', '.join(adlar)}).")
     return kaynak, True
 
 
@@ -553,10 +597,51 @@ def yama_kvkk(kaynak):
     return kaynak, True
 
 
+_DE_TARA_TANIM = '''
+
+def _de_tara(tablo, **arg):
+    """Tabloyu sayfalayarak TAMAMEN tarar (DynamoDB scan tek yanitta en fazla 1 MB
+    dondurur; LastEvaluatedKey izlenmezse buyuk tabloda pano eksik sayar)."""
+    ogeler, devam = [], None
+    while True:
+        if devam:
+            arg['ExclusiveStartKey'] = devam
+        s = tablo.scan(**arg)
+        ogeler += s.get('Items', [])
+        devam = s.get('LastEvaluatedKey')
+        if not devam:
+            return ogeler
+
+'''
+
+
+def yama_sayfalama(kaynak):
+    """I) Panodaki sayfalanmamis scan cagrilarini _de_tara ile sayfalar. Döner: (yeni, uygulandi).
+
+    Gerçek backend birçok okuma ucunda `dynamodb.Table(X).scan().get('Items', [])`
+    kullanıyor; tablo 1 MB'ı (binlerce kayıt) geçince bu yalnızca ilk sayfayı okur
+    ve pano EKSİK sayar. Aynı anlamı taşıyan sayfalı _de_tara(...) ile değiştirilir.
+    """
+    desen = re.compile(r"dynamodb\.Table\(([^()]+)\)\.scan\(\)\.get\(\s*['\"]Items['\"]\s*,\s*\[\]\s*\)")
+    sayi = len(desen.findall(kaynak))
+    if sayi == 0:
+        print("YAMA: sayfalanmamis scan bulunamadi (zaten sayfali ya da yok).")
+        return kaynak, False
+    kaynak = desen.sub(r"_de_tara(dynamodb.Table(\1))", kaynak)
+    if "def _de_tara" not in kaynak:
+        h = re.search(r"^def\s+lambda_handler\s*\(", kaynak, re.M)
+        if not h:
+            raise YamaAtla("'def lambda_handler' bulunamadı; _de_tara eklenemedi.")
+        kaynak = kaynak[:h.start()] + _DE_TARA_TANIM.lstrip("\n") + "\n" + kaynak[h.start():]
+    print(f"YAMA: {sayi} sayfalanmamis scan _de_tara ile sayfalandi.")
+    return kaynak, True
+
+
 def main():
-    if len(sys.argv) == 3 and sys.argv[1] == "--olcum-tablosu":
+    if len(sys.argv) == 3 and sys.argv[1] in ("--olcum-tablolari", "--olcum-tablosu"):
         try:
-            builtins.print(json.dumps(olcum_tablosu(Path(sys.argv[2]).read_text(encoding="utf-8"))))
+            adlar = sorted(olcum_tablolari(Path(sys.argv[2]).read_text(encoding="utf-8")))
+            builtins.print(json.dumps({"adlar": adlar, "ifade": adlar[0]}))
         except YamaAtla as e:
             print(f"YAMA: {e}")
             sys.exit(4)
@@ -571,7 +656,8 @@ def main():
     uygulandi = [a, b]
     for ad, yama in (("otomatik onay", yama_otomatik_onay), ("olcum TTL", yama_olcum_ttl),
                      ("asistan ucu", yama_asistan), ("hesap uclari", yama_hesap),
-                     ("e-posta dogrulama", yama_eposta_dogrula), ("KVKK onayi", yama_kvkk)):
+                     ("e-posta dogrulama", yama_eposta_dogrula), ("KVKK onayi", yama_kvkk),
+                     ("sayfalama", yama_sayfalama)):
         try:
             kaynak, u = yama(kaynak)
             uygulandi.append(u)

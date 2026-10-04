@@ -39,6 +39,20 @@ davranış sınanır. Bellekteki sahte AWS: `sahte_aws.py`.
 - **Yük**: 60 cihaz + 200 ölçüm, sayfalı `scan` altında özet doğru toplanır (ilk
   sayfayla yetinmez), müşteri izolasyonu korunur.
 
-> Not: gerçek `lambda_function.py`'nin tüm `scan` çağrılarını sayfalaması (ör. `_tara`
-> deseni) gerekir; aksi halde cihaz sayısı arttığında pano eksik sayar. Örnek backend
-> bu deseni kullanır ve test doğrular — gerçek backend'de de uygulandığını doğrulayın.
+### Gerçek backend'de bulunup düzeltilen hatalar
+
+Gerçek `lambda_function.py` incelenip iki hata bulundu; ikisi de `aws/ekler/yamala.py`
+yamalarıyla düzeltildi ve `test_backend.py` içinde regresyon testine bağlandı:
+
+1. **Ölçüm TTL çalışmıyordu.** `yama_olcum_ttl` iki ölçüm tablolu (akü + inverter)
+   backend'de `tablo = tablo` üreterek çalışma anında hata veriyordu (sessizce
+   yutuluyordu); eski ölçümler hiç silinmiyor, depolama maliyeti sürekli büyüyordu.
+   Yama artık iki tabloyu da bir küme olarak kapsıyor, çözülemezse hiç uygulanmıyor.
+2. **Pano sayıları büyük tabloda eksik çıkardı.** Okuma uçları `Table(X).scan()`
+   ile tek sayfa (en fazla 1 MB) okuyordu; cihaz/müşteri sayısı binleri geçince
+   özet ve listeler eksik sayardı. Yeni `yama_sayfalama` bunları sayfalı `_de_tara`
+   ile değiştiriyor. Test, yamasız kodun eksik saydığını, yamalı kodun doğru
+   saydığını kanıtlıyor.
+
+> Bu düzeltmeler yalnızca `.\hazirlik-kur.ps1` ya da `.\maliyet-koruma.ps1 -Uygula`
+> yeniden çalıştırılınca canlıya geçer (yama canlı koda yeniden uygulanır).
