@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "author": "Dennis Energy",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-potentiometer", "id": "potYuk", "top": -120, "left": -180, "attrs": {} },
+    { "type": "wokwi-potentiometer", "id": "potOrtam", "top": -120, "left": -60, "attrs": {} },
+    { "type": "wokwi-pushbutton", "id": "btnAriza", "top": 200, "left": -190, "attrs": { "color": "red", "label": "Kondansatör arıza" } },
+    { "type": "wokwi-led", "id": "ledYesil", "top": 60, "left": 200, "attrs": { "color": "green", "label": "Gönderildi" } },
+    { "type": "wokwi-led", "id": "ledKirmizi", "top": 60, "left": 250, "attrs": { "color": "red", "label": "Hata" } },
+    { "type": "wokwi-resistor", "id": "r1", "top": 140, "left": 190, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "r2", "top": 140, "left": 240, "rotate": 90, "attrs": { "value": "220" } }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+
+    [ "potYuk:VCC", "esp:3V3", "red", [] ],
+    [ "potYuk:GND", "esp:GND.1", "black", [] ],
+    [ "potYuk:SIG", "esp:34", "green", [] ],
+
+    [ "potOrtam:VCC", "esp:3V3", "red", [] ],
+    [ "potOrtam:GND", "esp:GND.1", "black", [] ],
+    [ "potOrtam:SIG", "esp:35", "orange", [] ],
+
+    [ "btnAriza:1.r", "esp:25", "blue", [] ],
+    [ "btnAriza:2.r", "esp:GND.1", "black", [] ],
+
+    [ "esp:26", "r1:1", "green", [] ],
+    [ "r1:2", "ledYesil:A", "green", [] ],
+    [ "ledYesil:C", "esp:GND.2", "black", [] ],
+
+    [ "esp:27", "r2:1", "red", [] ],
+    [ "r2:2", "ledKirmizi:A", "red", [] ],
+    [ "ledKirmizi:C", "esp:GND.2", "black", [] ]
+  ],
+  "dependencies": {}
+}
