@@ -403,6 +403,84 @@ def _():
         dogru(alan in sonuc, f"sonuçta {alan} alanı olmalı")
 
 
+# ══════════════════ 9. YAMA J: _birlestir canlıya taşınır ══════════════════
+
+# yamala.py'yi içe aktar (fizik düzeltmesini canlı Lambda'ya uygulayan yama)
+sys.path.insert(0, os.path.join(KOK, "aws", "ekler"))
+import yamala  # noqa: E402
+
+# Düzeltme ÖNCESİ _birlestir (iki clamp, uyari koruması yok) — hatayı üretir
+_ONCE = '''
+def _birlestir(bulgular, tip, ek=None):
+    if not bulgular:
+        return {"saglik": None, "seviye": "bilinmiyor", "bulgular": []}
+    en_kotu = min(bulgular, key=lambda b: b["skor"])
+    ortalama = sum(b["skor"] for b in bulgular) / len(bulgular)
+    saglik = round(en_kotu["skor"] * 0.7 + ortalama * 0.3)
+    seviye = ("kritik" if saglik < 65 else
+              "uyari"  if saglik < 85 else "normal")
+    if seviye == "kritik" and not any(b["seviye"] == "kritik" for b in bulgular):
+        seviye = "uyari"
+    if seviye == "normal" and any(b["seviye"] == "kritik" for b in bulgular):
+        seviye = "uyari"
+    sonuc = {"tip": tip, "saglik": saglik, "seviye": seviye, "bulgular": bulgular}
+    return sonuc
+
+
+def lambda_handler(event, context):
+    return None
+'''
+
+
+@created("yama J: düzeltme öncesi motorda yüksek skorlu uyarı 'normal' sayılır (hata)")
+def _():
+    ns = {}
+    exec(_ONCE, ns)
+    # en kötü uyarı skoru 88, diğeri 94 → harmanlanmış 89 ≥ 85 → normal (hata)
+    bulgular = [{"mekanizma": "a", "seviye": "uyari", "skor": 88},
+                {"mekanizma": "b", "seviye": "normal", "skor": 94}]
+    r = ns["_birlestir"](list(bulgular), "aku")
+    esit(r["seviye"], "normal", "düzeltme öncesi hatalı davranışın kanıtı")
+
+
+@created("yama J: _birlestir'e uyarı koruması uygulanır ve davranışı düzeltir")
+def _():
+    yeni, uygulandi = yamala.yama_birlestir_uyari(_ONCE)
+    dogru(uygulandi, "yama uygulanmalı")
+    compile(yeni, "test", "exec")   # sözdizimi geçerli
+    ns = {}
+    exec(yeni, ns)
+    bulgular = [{"mekanizma": "a", "seviye": "uyari", "skor": 88},
+                {"mekanizma": "b", "seviye": "normal", "skor": 94}]
+    r = ns["_birlestir"](list(bulgular), "aku")
+    esit(r["seviye"], "uyari", "yamalı motor uyarıyı korumalı")
+
+
+@created("yama J: idempotent — ikinci kez uygulanmaz")
+def _():
+    yeni, _u = yamala.yama_birlestir_uyari(_ONCE)
+    tekrar, uygulandi = yamala.yama_birlestir_uyari(yeni)
+    dogru(not uygulandi, "ikinci uygulamada değişiklik olmamalı")
+    esit(tekrar, yeni, "idempotent: içerik aynı kalmalı")
+
+
+@created("yama J: fizik motoru gömülü değilse güvenle atlanır")
+def _():
+    try:
+        yamala.yama_birlestir_uyari("def lambda_handler(e, c):\n    return None\n")
+        dogru(False, "motor yoksa YamaAtla beklenir")
+    except yamala.YamaAtla:
+        pass
+
+
+@created("yama J: depodaki gerçek fizik.py zaten düzeltilmiş (çift uygulanmaz)")
+def _():
+    with open(os.path.join(KOK, "backend", "motor", "fizik.py"), encoding="utf-8") as f:
+        gercek = f.read()
+    _yeni, uygulandi = yamala.yama_birlestir_uyari(gercek)
+    dogru(not uygulandi, "depo kopyası zaten düzeltme içermeli")
+
+
 # ══════════════════ çalıştır ══════════════════
 
 if __name__ == "__main__":

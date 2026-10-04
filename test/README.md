@@ -80,8 +80,11 @@ yamalarıyla düzeltildi ve `test_backend.py` içinde regresyon testine bağland
    hiç çalışmadan "belirsiz" dönüyordu — gerçek bir üretim hatası garanti
    kararına hiç ulaşamıyordu. `_birlestir` artık en kötü bulgunun seviyesini
    koruyor (zaten `kritik` için yapılan clamp'in `uyari` için simetriği).
-   `test/backend/test_fizik.py` bunu kilitler. **Bu düzeltme `backend/motor/`
-   kopyasındadır; canlı Lambda'ya gömülü motora da taşınmalıdır.**
+   Düzeltme hem `backend/motor/fizik.py` depo kopyasında, hem de canlı Lambda'ya
+   gömülü motora **`yamala.py` J yamasıyla otomatik uygulanır** (idempotent;
+   `.\hazirlik-kur.ps1` / `.\maliyet-koruma.ps1 -Uygula` ile canlıya geçer,
+   motor gömülü değilse sessizce atlanır). `test/backend/test_fizik.py` hem
+   davranışı hem yamayı (öncesi/sonrası/idempotentlik) kilitler.
 
 > Bu düzeltmeler yalnızca `.\hazirlik-kur.ps1` ya da `.\maliyet-koruma.ps1 -Uygula`
 > yeniden çalıştırılınca canlıya geçer (yama canlı koda yeniden uygulanır).

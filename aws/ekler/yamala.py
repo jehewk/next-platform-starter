@@ -68,6 +68,14 @@ Yamalar (her biri bağımsız; zaten varsa atlanır):
   · Panodaki `Table(X).scan().get('Items', [])` çağrıları sayfalı `_de_tara`
     ile değiştirilir; tablo 1 MB'ı geçince pano eksik saymaz.
 
+ J) Fizik motoru: uyarı seviyesi korunur (_birlestir)
+  · Gömülü fizik motorundaki _birlestir, bir mekanizma "uyarı" verse bile
+    harmanlanmış skor yüksek kalınca cihazı "normal" sayabiliyordu; bu durumda
+    kaynak_analizi (garanti sınıflandırması) hiç çalışmadan "belirsiz" dönüp
+    gerçek üretim hatalarını kaçırıyordu. En kötü bulgu uyarı/kritik ise seviye
+    en az "uyarı"ya çekilir (zaten kritik için var olan clamp'in simetriği).
+  · Fizik motoru bu Lambda'ya gömülü değilse (def _birlestir yoksa) atlanır.
+
 Sonuç Python derleyicisinden geçirilir; hata varsa hiçbir şey yazılmaz.
 Girdi dosyasına asla dokunmaz.
 """
@@ -637,6 +645,67 @@ def yama_sayfalama(kaynak):
     return kaynak, True
 
 
+def _fonksiyon_govdesi(kaynak, ad):
+    """Modül düzeyindeki `def ad(`'in gövdesini (baş, bit) döner ya da None.
+
+    Gövde, tanımdan sonraki ilk sütun-0 def/class/@/atama satırında biter."""
+    m = re.search(r"^def\s+%s\s*\(" % re.escape(ad), kaynak, re.M)
+    if not m:
+        return None
+    # Gövde, tanımdan SONRAKİ ilk sütun-0 def/class/@/atama satırında biter.
+    # (slice başı imza satırının ortasına denk geldiğinden ^ değil, \n ile hizala)
+    son = re.search(r"\n(?:def |class |@|[A-Za-z_])", kaynak[m.end():])
+    return m.start(), (m.end() + son.start() + 1 if son else len(kaynak))
+
+
+def yama_birlestir_uyari(kaynak):
+    """J) _birlestir: uyarı veren bulgu ortalamada erimesin. Döner: (yeni, uygulandi)."""
+    sinir = _fonksiyon_govdesi(kaynak, "_birlestir")
+    if not sinir:
+        raise YamaAtla("'def _birlestir' bulunamadı; fizik motoru bu Lambda'ya gömülü değil, uyari koruması eklenmedi.")
+    bas, bit = sinir
+    govde = kaynak[bas:bit]
+
+    # Zaten var mı? Kendi işaretimiz ya da anlamca eşdeğer (uyari üyelik) bir clamp
+    if "DE_UYARI_SEVIYE_KORU" in govde or \
+       re.search(r"""if\s+seviye\s*==\s*['"]normal['"].*in\s*\(\s*['"]uyari['"]""", govde, re.S):
+        print("YAMA: _birlestir uyari korumasi zaten var.")
+        return kaynak, False
+
+    # Tam clamp bloğu: `if seviye == '...' ...:` + tek satırlık `seviye = 'uyari'`.
+    # IF satırının girintisi (ifade seviyesi) kullanılır; gövde satırı (iç girinti)
+    # değil — yoksa yeni clamp mevcut if'in İÇİNE girip erişilemez kalır.
+    clamp_deseni = re.compile(
+        r"""^([ \t]*)if\s+seviye\s*==\s*['"](?:normal|kritik)['"][^\n]*:[ \t]*\n"""
+        r"""[ \t]+seviye\s*=\s*(['"])uyari\2[ \t]*\n""", re.M)
+    clamplar = list(clamp_deseni.finditer(govde))
+    if clamplar:
+        hedef = clamplar[-1]            # son clamp'ten sonra ekle (hepsi çalışsın)
+        g, q = hedef.group(1), hedef.group(2)
+        yer = bas + hedef.end()
+    else:
+        # Clamp yoksa seviye'nin saglik esiginden atandigi yerden sonra ekle
+        esik = re.search(r"""^([ \t]*)seviye\s*=\s*\(?\s*(['"])kritik\2""", govde, re.M)
+        if not esik:
+            raise YamaAtla("_birlestir içinde seviye ataması/clamp bulunamadı; yapı beklenenden farklı.")
+        g, q = esik.group(1), esik.group(2)
+        # Çok satırlı olabilen `seviye = (... else "normal")` ifadesinin sonu
+        nf = re.search(r"""['"]normal['"]\s*\)?""", govde[esik.start():])
+        bitnok = esik.start() + (nf.end() if nf else 0)
+        yer = kaynak.index("\n", bas + bitnok) + 1
+
+    clamp = (
+        f"{g}# DE_UYARI_SEVIYE_KORU (yamala.py J): bir mekanizma uyari/kritik ise cihaz\n"
+        f"{g}# normal sayilmaz; yoksa yuksek skorlu tek uyari ortalamada erir ve\n"
+        f"{g}# kaynak_analizi (garanti karari) hic calismadan 'belirsiz' donerdi.\n"
+        f"{g}if seviye == {q}normal{q} and any(b[{q}seviye{q}] in ({q}uyari{q}, {q}kritik{q}) for b in bulgular):\n"
+        f"{g}    seviye = {q}uyari{q}\n"
+    )
+    kaynak = kaynak[:yer] + clamp + kaynak[yer:]
+    print("YAMA: _birlestir uyari seviyesi korumasi eklendi.")
+    return kaynak, True
+
+
 def main():
     if len(sys.argv) == 3 and sys.argv[1] in ("--olcum-tablolari", "--olcum-tablosu"):
         try:
@@ -657,7 +726,8 @@ def main():
     for ad, yama in (("otomatik onay", yama_otomatik_onay), ("olcum TTL", yama_olcum_ttl),
                      ("asistan ucu", yama_asistan), ("hesap uclari", yama_hesap),
                      ("e-posta dogrulama", yama_eposta_dogrula), ("KVKK onayi", yama_kvkk),
-                     ("sayfalama", yama_sayfalama)):
+                     ("sayfalama", yama_sayfalama),
+                     ("birlestir uyari korumasi", yama_birlestir_uyari)):
         try:
             kaynak, u = yama(kaynak)
             uygulandi.append(u)
