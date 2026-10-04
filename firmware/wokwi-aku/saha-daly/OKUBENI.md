@@ -37,7 +37,27 @@ Bu test gerçek sunucuya yazar; önce canlı tarafın hazır olması gerekir:
 
 ## 2) Wokwi projesini kur
 
-wokwi.com → yeni **ESP32** projesi. Şu dosyaları ekle:
+### KOLAY YOL (önerilen) — 4 dosya, ayar önceden yapılmış
+
+wokwi.com → yeni **ESP32** projesi. Sadece şunları yapıştır:
+
+1. **`sketch.ino`** sekmesinin içini sil, bu klasördeki **`TEK-DOSYA-sketch.ino`**'nun
+   tamamını yapıştır. *(Tüm .h dosyaları bunun içine gömülü; KAYNAK_SIMULASYON 0 ve
+   30 sn ayarı zaten yapılmış.)*
+2. **`diagram.json`** sekmesinin içini sil, bu klasördeki **`diagram.json`**'u yapıştır.
+3. **▾ → New File…** ile **`daly.chip.json`** oluştur, bu klasördekini yapıştır.
+4. **▾ → New File…** ile **`daly.chip.c`** oluştur, bu klasördekini yapıştır.
+
+Sonra `sketch.ino`'da iki satırı (en üstteki yorumun altında) adım 1'deki değerlerle değiştir:
+```c
+#define CIHAZ_ID       "AKU-WOKWI-…"
+#define CIHAZ_ANAHTARI "DEV-…"
+```
+Başlat. Bu kadar — adım 3'e (aşağıdaki "Çalıştır") geç.
+
+### UZUN YOL (ayrı dosyalarla)
+
+İstersen dosyaları tek tek de ekleyebilirsin:
 
 **Firmware (üst klasör `wokwi-aku`'dan):**
 `sketch.ino`, `ayarlar.h`, `olcum.h`, `paket.h`, `direnc.h`, `sertifika.h`,
