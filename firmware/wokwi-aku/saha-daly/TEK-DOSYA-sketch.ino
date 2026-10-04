@@ -371,7 +371,16 @@ void wifiBaglan() {
   while (WiFi.status() != WL_CONNECTED && millis() - bas < 20000) { delay(250); Serial.print('.'); }
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf(" tamam (%s)\n", WiFi.localIP().toString().c_str());
+    // TLS sertifika tarih dogrulamasi gecerli saat ister; NTP otursun diye
+    // ilk HTTPS'ten ONCE beklenir (aksi halde ilk el sikisma assert ile coker).
     configTime(0, 0, "pool.ntp.org", "time.google.com");
+    struct tm zt;
+    const uint32_t t0 = millis();
+    Serial.print("Saat eşitleniyor");
+    while (time(nullptr) < 1700000000UL && millis() - t0 < 12000) {
+      Serial.print('.'); delay(300); getLocalTime(&zt, 0);
+    }
+    Serial.println(time(nullptr) >= 1700000000UL ? " tamam" : " (eşitlenemedi)");
   } else {
     Serial.println(" başarısız, sonraki gönderimde tekrar denenecek");
   }

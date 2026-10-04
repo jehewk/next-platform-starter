@@ -53,8 +53,17 @@ void wifiBaglan() {
   }
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf(" tamam (%s)\n", WiFi.localIP().toString().c_str());
-    // TLS ve günlük kayıtlar için UTC saat; backend zamanı kendisi damgalar.
+    // TLS sertifika tarih doğrulaması geçerli saat ister; NTP otursun diye ilk
+    // HTTPS'ten ÖNCE beklenir (aksi halde ilk el sıkışma assert ile çöker).
+    // backend zamanı yine kendisi damgalar; bu yalnızca TLS için.
     configTime(0, 0, "pool.ntp.org", "time.google.com");
+    struct tm zt;
+    const uint32_t t0 = millis();
+    Serial.print("Saat eşitleniyor");
+    while (time(nullptr) < 1700000000UL && millis() - t0 < 12000) {
+      Serial.print('.'); delay(300); getLocalTime(&zt, 0);
+    }
+    Serial.println(time(nullptr) >= 1700000000UL ? " tamam" : " (eşitlenemedi)");
   } else {
     Serial.println(" başarısız, sonraki gönderimde tekrar denenecek");
   }
