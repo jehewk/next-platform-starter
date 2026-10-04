@@ -31,10 +31,15 @@ Wokwi'de saat 120 kat hızlı akar: bir simüle "gün" ~6 dakikada dolar, böyle
 ### Cihaz kimliği nereden gelir
 
 Backend `cihaz_id` + `anahtar` çiftini `dennis-cihazlar` tablosunda arar
-(`_cihaz_dogrula`). Çift, üretim hattında `POST /de/cihaz/uret` ile (üretim
-anahtarıyla) oluşturulur. Test için bir **inverter** kaydı üretip dönen değerleri
-`ayarlar.h`'ye yaz. Yanlış çift → `403 Cihaz dogrulanamadi`; firmware bunu seri
-portta açıkça söyler.
+(`_cihaz_dogrula`). Test için bir **inverter** kaydı üret ve anahtarını al:
+
+```powershell
+cd C:\dennis\aws
+.\cihaz-uret.ps1 -Tip inverter
+```
+
+Betik `ayarlar.h`'ye yapıştıracağın `CIHAZ_ID` + `CIHAZ_ANAHTARI` satırlarını basar.
+Yanlış çift → `403 Cihaz dogrulanamadi`; firmware bunu seri portta açıkça söyler.
 
 ## Gönderilen paket
 

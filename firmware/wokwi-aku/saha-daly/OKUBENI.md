@@ -19,11 +19,19 @@ gerçek AWS'ye gidip **dashboard'da görünür**. Wokwi'de sahaya en yakın uçt
 Bu test gerçek sunucuya yazar; önce canlı tarafın hazır olması gerekir:
 
 1. `cd C:\dennis\aws ; .\hazirlik-kur.ps1` — backend + Lambda yayında.
-2. Bir **akü** cihazı üret (üretim hattının yaptığı iş). Üretici panelinden
-   "Cihaz üret" ya da doğrudan `POST /de/cihaz/uret` (üretim anahtarıyla).
-   Dönen `cihaz_id` ve `anahtar`'ı not et.
-3. İstersen cihazı bir müşteriye ata ki müşteri panelinde de görünsün (üretici
-   panelinde atamadan da görünür).
+2. Bir **akü** cihazı üret ve anahtarını al:
+   ```powershell
+   .\cihaz-uret.ps1
+   ```
+   Betik `dennis-cihazlar` tablosuna bir kayıt ekler ve doğrudan
+   `ayarlar.h`'ye yapıştıracağın satırları basar:
+   ```c
+   #define CIHAZ_ID       "AKU-WOKWI-1A2B"
+   #define CIHAZ_ANAHTARI "DEV-…"
+   ```
+   Bir müşteriye atamak istersen: `.\cihaz-uret.ps1 -MusteriId <id>`.
+3. (İsteğe bağlı) Cihazı panelden bir müşteriye atarsan müşteri panelinde de görünür;
+   atamadan da üretici panelinde görünür.
 
 > Anahtarı sohbet/paylaşımda yazma; yalnızca `ayarlar.h`'de tut.
 
