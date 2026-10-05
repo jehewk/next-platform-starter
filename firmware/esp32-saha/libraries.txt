@@ -1,0 +1,3 @@
+# Wokwi/Arduino kutuphane listesi (gercek ESP32)
+ArduinoJson
+NimBLE-Arduino
