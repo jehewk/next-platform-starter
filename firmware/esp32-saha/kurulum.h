@@ -35,9 +35,11 @@ class Kurulum {
   bool bleAcik() const { return bleAcik_; }
 
   // Provizyon modu: telefon baglanip WiFi+kod yazana kadar reklam yapar.
+  // Ad her cihaza ozgudur: "<onek> <cihaz_id>" — musteri dogru cihazi secebilsin.
   void bleBasla() {
     if (bleAcik_) return;
-    NimBLEDevice::init(BLE_AD);
+    String ad = String(BLE_AD_ONEK) + " " + CIHAZ_ID;    // or. "Dennis AKU-..-CB10"
+    NimBLEDevice::init(ad.c_str());
     NimBLEServer* s = NimBLEDevice::createServer();
     NimBLEService* svc = s->createService(BLE_SERVIS_UUID);
     yaz_    = svc->createCharacteristic(BLE_YAZ_UUID, NIMBLE_PROPERTY::WRITE);
@@ -46,10 +48,10 @@ class Kurulum {
     svc->start();
     NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
     adv->addServiceUUID(BLE_SERVIS_UUID);
-    adv->setName(BLE_AD);
+    adv->setName(ad.c_str());
     adv->start();
     bleAcik_ = true;
-    Serial.println("BLE provizyon acik: " BLE_AD " (telefondan WiFi + eslesme kodu bekleniyor)");
+    Serial.printf("BLE provizyon acik: %s (telefondan WiFi + eslesme kodu bekleniyor)\n", ad.c_str());
   }
 
   void bleDurdur() {

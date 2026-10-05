@@ -23,8 +23,10 @@
 // Cihaz tipi / akü
 #define AKU_KAPASITE_AH   100.0f
 
-// BLE
-#define BLE_AD            "Dennis-Aku"      // telefonun gorecegi ad
+// BLE — her cihaz BENZERSIZ ad yayinlar: "<onek> <cihaz_id>" (or. "Dennis AKU-..-CB10").
+// Musteri, cihazin uzerindeki etikette yazan kimlikle eslesen adi secer. Uygulama
+// "Dennis" onekiyle suzer. (Reklam adi en fazla ~29 bayt; cihaz_id buna sigar.)
+#define BLE_AD_ONEK       "Dennis"
 // Nordic UART benzeri özel servis/karakteristik UUID'leri
 #define BLE_SERVIS_UUID   "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 #define BLE_YAZ_UUID      "6e400002-b5a3-f393-e0a9-e50e24dcca9e"  // telefon -> cihaz (WiFi+kod)

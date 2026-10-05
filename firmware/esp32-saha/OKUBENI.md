@@ -20,7 +20,7 @@ Sonra: her 10 dk Daly oku -> POST /de/aku/veri
 ```
 
 İki durum:
-- **KURULUM** — cihaz bir müşteriye bağlı değil → BLE reklamı açık (ad: `Dennis-Aku`),
+- **KURULUM** — cihaz bir müşteriye bağlı değil → BLE reklamı açık (ad: `Dennis <cihaz_id>` — her cihaza özgü),
   LED yavaş yanıp söner, telefondan WiFi+kod bekler.
 - **İZLEME** — bağlı → LED sabit, ölçüm gönderir. Bağlanma durumu NVS'de saklanır;
   elektrik gidip gelse de tekrar kurulum istemez.
@@ -56,13 +56,13 @@ kontrol et.
 
 ## 4) Çalıştırma / test
 
-İlk açılışta cihaz **KURULUM** modundadır (`Dennis-Aku` adıyla BLE reklamı).
+İlk açılışta cihaz **KURULUM** modundadır (`Dennis <cihaz_id>` adıyla BLE reklamı; her cihaz benzersiz).
 
 **Müşteri uygulaması tarafı henüz yazılmadıysa**, BLE'yi bir telefon aracıyla
 (ör. **nRF Connect**) elle test edebilirsin:
 1. Önce bir eşleşme kodu al: müşteri olarak giriş yapıp `POST /de/kurulum/basla`
    çağır (app'te "Cihaz Ekle" bunu yapacak). Dönen `eslesme_kodu`'yu not et.
-2. nRF Connect → `Dennis-Aku`'ya bağlan → yazılabilir karakteristiğe
+2. nRF Connect → `Dennis ...` (cihazın kimliği) adlı cihaza bağlan → yazılabilir karakteristiğe
    (`6e400002-...`) şu JSON'u yaz:
    ```json
    {"ssid":"EvWifi","sifre":"parola","kod":"ABCD2345"}
