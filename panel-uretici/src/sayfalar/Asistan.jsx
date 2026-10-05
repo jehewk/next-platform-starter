@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Plus, Trash2, Pencil, MessageSquare, Eraser } from "lucide-react";
 import SohbetPaneli from "../bilesenler/SohbetPaneli";
 import { useSohbet } from "../api/sohbetler";
@@ -8,6 +9,8 @@ export default function Asistan() {
   const { liste, aktif, yeni, sec, sil, yenidenAdlandir, temizle } = useSohbet();
   const [duzenlenen, setDuzenlenen] = useState(null);
   const [ad, setAd] = useState("");
+  // Detay sayfasındaki "Bu arızayı açıkla" butonu buraya soru ile yönlendirir.
+  const baslangicSoru = useLocation().state?.soru || "";
 
   function kaydet() {
     yenidenAdlandir(duzenlenen, ad);
@@ -64,7 +67,7 @@ export default function Asistan() {
             </button>
           )}
         </header>
-        <div className="min-h-0 flex-1"><SohbetPaneli /></div>
+        <div className="min-h-0 flex-1"><SohbetPaneli baslangicSoru={baslangicSoru} /></div>
       </section>
     </div>
   );

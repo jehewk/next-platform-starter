@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { ChevronLeft, LifeBuoy, ShieldCheck, Thermometer, Gauge, Clock } from "lucide-react";
+import { ChevronLeft, LifeBuoy, ShieldCheck, Thermometer, Gauge, Clock, Sparkles } from "lucide-react";
 import { Iskelet, HataKutusu } from "../bilesenler/VeriDurumu";
 import { useGrafikRenkleri, Ipucu } from "../bilesenler/Grafik";
 import Halka from "../bilesenler/Halka";
@@ -23,6 +23,7 @@ export default function CihazDetay() {
   const { id } = useParams();
   const { veri: c, hata, yukleniyor, yenile } = useCanli(() => cihazBul(id), 30000);
   const [destek, setDestek] = useState(false);
+  const git = useNavigate();
 
   if (yukleniyor) return <Iskelet satir={3} yukseklik="h-32" />;
   if (!c) return <HataKutusu hata={hata} yenile={yenile} />;
@@ -52,6 +53,13 @@ export default function CihazDetay() {
             {d.anahtar === "dikkat" && c.tahmin?.kalanSaat != null && (
               <p className="mt-2 text-xs text-sonuk">Ekibimiz {yaklasikZaman(c.tahmin.kalanSaat)} sizinle iletişime geçecek.</p>
             )}
+            <button
+              onClick={() => git("/sohbet", { state: { soru:
+                `${c.tip === "aku" ? "Aküm" : "İnverterim"} (${c.id}) için bir uyarı var: ${mesaj.baslik}. ` +
+                `${mesaj.aciklama} Bu ne anlama geliyor, nedeni ne olabilir ve benim ne yapmam gerekir? Basit ve kısa anlat.` } })}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-cizgi px-3 py-1.5 text-xs font-medium text-metin hover:bg-panel2">
+              <Sparkles size={13} /> Bunu asistana sor
+            </button>
           </>
         ) : (
           <p className="mt-1 text-sm text-soluk">{c.saglik == null ? "İlk ölçüm bekleniyor." : "Cihazınız normal çalışıyor."}</p>

@@ -1,10 +1,12 @@
 import { Plus, Eraser } from "lucide-react";
+import { useLocation } from "react-router-dom";
 import SohbetPaneli from "../bilesenler/SohbetPaneli";
 import { useSohbet } from "../api/sohbetler";
 
 /** Tam ekran sohbet; yükseklik üst çubuk ve alt sekmeler hesaba katılarak ayarlanır. */
 export default function Sohbet() {
   const { aktif, yeni, temizle } = useSohbet();
+  const baslangicSoru = useLocation().state?.soru || "";
   return (
     <div className="flex h-[calc(100dvh-3.5rem-env(safe-area-inset-top)-56px-env(safe-area-inset-bottom))] flex-col md:h-[calc(100dvh-3.5rem)]">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-cizgi px-4">
@@ -16,7 +18,7 @@ export default function Sohbet() {
           </>
         )}
       </div>
-      <div className="min-h-0 flex-1"><SohbetPaneli /></div>
+      <div className="min-h-0 flex-1"><SohbetPaneli baslangicSoru={baslangicSoru} /></div>
     </div>
   );
 }

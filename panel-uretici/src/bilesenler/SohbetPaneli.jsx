@@ -11,7 +11,7 @@ import { useGrafikRenkleri, Ipucu } from "./Grafik";
  * Mesaj akışı + yazma alanı. Sohbet sayfasında ve sağ çekmecede kullanılır.
  * Enter gönderir, Shift+Enter yeni satır açar.
  */
-export default function SohbetPaneli({ kompakt = false }) {
+export default function SohbetPaneli({ kompakt = false, baslangicSoru = "" }) {
   const { aktif, bekliyor, gonder } = useSohbet();
   const [giris, setGiris] = useState("");
   const [ek, setEk] = useState(null);           // {tur, veri, onizleme}
@@ -19,6 +19,15 @@ export default function SohbetPaneli({ kompakt = false }) {
   const dosya = useRef(null);
   const alan = useRef(null);
   const son = useRef(null);
+  const tohumlandi = useRef(false);
+
+  // Detay sayfasından "bu arızayı açıkla" ile gelindiğinde soruyu bir kez otomatik yolla.
+  useEffect(() => {
+    if (baslangicSoru && !tohumlandi.current) {
+      tohumlandi.current = true;
+      gonder(baslangicSoru);
+    }
+  }, [baslangicSoru, gonder]);
 
   useEffect(() => { son.current?.scrollIntoView({ block: "end" }); }, [aktif.mesajlar.length, bekliyor, aktif.id]);
 

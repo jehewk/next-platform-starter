@@ -1,5 +1,5 @@
-import { useParams, Link } from "react-router-dom";
-import { ChevronLeft, AlertTriangle, Clock } from "lucide-react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { ChevronLeft, AlertTriangle, Clock, Sparkles } from "lucide-react";
 import { useVeri } from "../api/useVeri";
 import { cihazBul, musteriBul, akuDetayUyarla, cihazGecmisi } from "../api/servis";
 import {
@@ -17,6 +17,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 
 export default function AkuDetay() {
   const { id } = useParams();
+  const git = useNavigate();
   const { veri: aku, yukleniyor, hata, yenile } = useVeri(() => cihazBul(id), [id]);
   const { veri: musteri } = useVeri(
     () => (aku?.musteriId ? musteriBul(aku.musteriId) : Promise.resolve(null)),
@@ -116,6 +117,14 @@ export default function AkuDetay() {
                 <span className="mx-1 text-cizgi">|</span>
                 {aku.tahmin.guven != null ? `%${aku.tahmin.guven} güven` : "güven hesaplanmadı"}
               </div>
+              <button
+                onClick={() => git("/asistan", { state: { soru:
+                  `${aku.id}${aku.model ? ` (${aku.model})` : ""} akümde "${aku.tahmin.bilesen}" sorunu görülüyor. ` +
+                  `${aku.tahmin.gerekce} Sağlık ${aku.saglik ?? "?"}/100. ` +
+                  "Bu arızanın nedenini, olası sebeplerini ve çözüm/müdahale adımlarını kısaca açıkla." } })}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-cizgi px-3 py-1.5 text-xs font-medium text-metin hover:bg-panel2">
+                <Sparkles size={13} /> Bu arızayı asistana açıkla
+              </button>
             </div>
           </div>
         </div>
