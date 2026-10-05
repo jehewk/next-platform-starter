@@ -67,11 +67,21 @@ if (-not $MusteriId) {
 }
 
 Adim "Cihaz musteriye atandi"
-$vyol2 = JsonDosyasi @{ ":m" = @{ S = $MusteriId } }
+# Musteri uygulamasi yalnizca durum in (aktif,uyari,arizali) cihazlari gosterir.
+# Bir musteriye atanan cihaz sahadadir -> durumu 'sahada'/'depoda'/bos ise 'aktif'
+# yapilir (BLE eslestirmesinin yaptigi is). Mevcut uyari/arizali korunur.
+$mevcutDurum = if ($cihaz.Item.durum) { $cihaz.Item.durum.S } else { "" }
+$deg = @{ ":m" = @{ S = $MusteriId } }
+$ifade = "SET musteri_id = :m"
+if ($mevcutDurum -notin @("aktif", "uyari", "arizali")) {
+  $ifade += ", durum = :d"
+  $deg[":d"] = @{ S = "aktif" }
+}
+$vyol2 = JsonDosyasi $deg
 Cagir dynamodb update-item --table-name $CihazTablosu --key "file://$kyol" `
-  --update-expression "SET musteri_id = :m" --expression-attribute-values "file://$vyol2" | Out-Null
+  --update-expression $ifade --expression-attribute-values "file://$vyol2" | Out-Null
 Remove-Item $kyol, $vyol2 -ErrorAction SilentlyContinue
 
-Tamam "$CihazId  ->  musteri $MusteriId"
+Tamam "$CihazId  ->  musteri $MusteriId$(if ($deg.ContainsKey(':d')) { ' (durum: aktif)' } else { '' })"
 Bilgi "Artik uretici panelinde 'Musteriler' altinda ve bu musterinin uygulamasinda gorunur."
-Bilgi "Birkaç saniye icinde panele yansir (yeni veri geldikce de guncellenir)."
+Bilgi "Musteri uygulamasinda gorunmek icin durum aktif/uyari/arizali olmali (ayarlandi)."
