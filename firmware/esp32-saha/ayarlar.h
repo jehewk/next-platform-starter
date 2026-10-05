@@ -36,7 +36,12 @@
 #define GONDERIM_ARALIGI_MS  600000UL   // sahada 10 dk
 #define OKUMA_ARALIGI_MS     1000UL     // Daly okuma / iç direnç
 
-// Pinler (Daly UART2)
-#define PIN_DALY_RX   16   // Daly TX -> ESP32 RX
-#define PIN_DALY_TX   17   // Daly RX <- ESP32 TX
+// ── Daly baglantisi: RS485 (MAX485/MAX3485 alici-verici) ──
+// RS485 yari cift yoneldir; bir DE/RE (yon) pini gonderirken HIGH, dinlerken
+// LOW olmali. Modulde DE ve RE pinleri birlestirilip tek GPIO'ya baglanir.
+// MAX485 modulu:  RO->ESP RX(16),  DI->ESP TX(17),  DE+RE->GPIO(4),
+//                 A/B -> Daly RS485 hatti,  GND ortak,  VCC 3.3V (3.3V mantikli modul).
+#define PIN_DALY_RX   16   // MAX485 RO  -> ESP32 RX2
+#define PIN_DALY_TX   17   // MAX485 DI  <- ESP32 TX2
+#define PIN_DALY_DE   4    // MAX485 DE+RE (yon kontrolu); duz TTL UART ise -1 yap
 #define PIN_LED       2    // dahili LED: kurulum/baglanti durumu

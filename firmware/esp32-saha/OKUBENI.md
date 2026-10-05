@@ -35,17 +35,26 @@ dönen değerleri `ayarlar.h`'ye yaz:
 ```
 (Gelişmiş: seri programlama ile NVS'ye yazılıp firmware tek tip kalabilir.)
 
-## 2) Donanım bağlantısı (Daly BMS)
+## 2) Donanım bağlantısı (Daly BMS — RS485)
 
-| Daly UART | ESP32 |
-|---|---|
-| TX | GPIO16 (RX2) |
-| RX | GPIO17 (TX2) |
-| GND | GND |
+Daly'nin **RS485** çıkışı kullanılır. Araya bir **MAX485/MAX3485 alıcı-verici**
+modülü girer (RS485 yarı çift yöneldir; yön pini gerekir).
 
-9600 baud. **Dikkat:** Daly UART çoğu modelde 3.3V'tur; değilse seviye çevirici
-kullan. İlk bağlantıda `daly_bms.h`'de `DALY_HATA_AYIKLA` tanımlayıp ham çerçeveleri
-kontrol et.
+| MAX485 modülü | ESP32 | Açıklama |
+|---|---|---|
+| RO | GPIO16 (RX2) | alınan veri |
+| DI | GPIO17 (TX2) | gönderilen veri |
+| DE + RE (birleşik) | GPIO4 | **yön**: gönderirken HIGH, dinlerken LOW (firmware yönetir) |
+| A / B | Daly RS485 A / B | diferansiyel hat |
+| VCC | 3.3V | **3.3V mantıklı modül** kullan (5V modülde RO'ya seviye çevirici gerekir) |
+| GND | GND | ortak toprak |
+
+- Baud **9600**. Uzun/gürültülü hatta **A–B arası 120 Ω** sonlandırma direnci.
+- DE+RE pinleri modülde birleştirilip tek GPIO'ya (`PIN_DALY_DE`, GPIO4) bağlanır.
+  Firmware gönderirken HIGH, bitince (TX boşalınca) LOW yapar — sen uğraşmazsın.
+- Daly'nin **düz TTL UART**'ını kullanacaksan RS485 modülü gerekmez; `ayarlar.h`'de
+  `PIN_DALY_DE` değerini `-1` yap (yön kontrolü kapanır).
+- İlk bağlantıda `daly_bms.h`'de `DALY_HATA_AYIKLA` tanımlayıp ham çerçeveleri kontrol et.
 
 ## 3) Derleme (Arduino IDE / PlatformIO)
 

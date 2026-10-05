@@ -23,7 +23,14 @@ class DalyBms {
  public:
   explicit DalyBms(HardwareSerial& port) : port_(port) {}
 
-  void basla(int rxPin, int txPin) { port_.begin(9600, SERIAL_8N1, rxPin, txPin); }
+  // dePin: RS485 alıcı-verici yön pini (DE+RE). Düz TTL UART'ta -1 bırakılır.
+  void basla(int rxPin, int txPin, int dePin = -1) {
+    de_ = dePin;
+    port_.begin(9600, SERIAL_8N1, rxPin, txPin);
+#if defined(ESP32)
+    if (de_ >= 0) { pinMode(de_, OUTPUT); digitalWrite(de_, LOW); }   // dinleme modu
+#endif
+  }
 
   /** Tüm alanları okur. Zorunlu komutlardan biri yanıt vermezse gecerli=false. */
   bool oku(AkuOlcum& o) {
@@ -62,7 +69,13 @@ class DalyBms {
     for (int i = 0; i < 12; i++) toplam += c[i];
     c[12] = toplam;
     while (port_.available()) port_.read();          // eski yanıt artıklarını at
+#if defined(ESP32)
+    if (de_ >= 0) digitalWrite(de_, HIGH);           // RS485: gönderim moduna geç
+#endif
     port_.write(c, sizeof(c));
+#if defined(ESP32)
+    if (de_ >= 0) { port_.flush(); digitalWrite(de_, LOW); }  // TX bitince dinlemeye dön
+#endif
   }
 
   /** Tek çerçeve okur; komut ve toplam doğruysa veriyi kopyalar. */
@@ -157,4 +170,5 @@ class DalyBms {
   }
 
   HardwareSerial& port_;
+  int de_ = -1;            // RS485 yön pini (-1 = TTL UART, yön kontrolü yok)
 };

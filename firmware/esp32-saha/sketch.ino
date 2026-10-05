@@ -88,7 +88,7 @@ void setup() {
   if (!anahtarTanimli)
     Serial.println("UYARI: CIHAZ_ANAHTARI fabrika degeri degil; gonderim/kayit 403 alir.");
 
-  daly.basla(PIN_DALY_RX, PIN_DALY_TX);
+  daly.basla(PIN_DALY_RX, PIN_DALY_TX, PIN_DALY_DE);   // RS485 yön pini
   kurulum.basla();
 
   if (kurulum.musteriyeBagli()) {
