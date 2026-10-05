@@ -1,9 +1,10 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { ChevronLeft, AlertTriangle, Clock, Sparkles } from "lucide-react";
 import { useVeri } from "../api/useVeri";
-import { cihazBul, musteriBul, akuDetayUyarla, cihazGecmisi } from "../api/servis";
+import { cihazBul, musteriBul, akuDetayUyarla, cihazGecmisi, kaynakAnalizi } from "../api/servis";
+import { Rozet } from "../bilesenler/Rozet";
 import {
-  saglikDurumu, DURUM_ADI, durumRengi, garantiDurumu, tarihTR, sureMetni, onceMetni, DURUM_YAZI,
+  saglikDurumu, DURUM_ADI, durumRengi, garantiDurumu, tarihTR, sureMetni, onceMetni, DURUM_YAZI, KAYNAK_ADI,
 } from "../veri/yardimci";
 import { Iskelet, HataKutusu } from "../bilesenler/VeriDurumu";
 import { useGrafikRenkleri, Ipucu } from "../bilesenler/Grafik";
@@ -19,6 +20,9 @@ export default function AkuDetay() {
   const { id } = useParams();
   const git = useNavigate();
   const { veri: aku, yukleniyor, hata, yenile } = useVeri(() => cihazBul(id), [id]);
+  // Arıza kaynağı analizi (/de/analiz/kaynak). Sağlıklı cihazda "belirsiz" döner;
+  // panel yalnız anlamlı bir sınıf ya da arıza varken gösterilir.
+  const { veri: kaynak } = useVeri(() => kaynakAnalizi(id).catch(() => null), [id]);
   const { veri: musteri } = useVeri(
     () => (aku?.musteriId ? musteriBul(aku.musteriId) : Promise.resolve(null)),
     [aku?.musteriId]
@@ -127,6 +131,29 @@ export default function AkuDetay() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {kaynak && kaynak.sinif && (aku.tahmin || kaynak.sinif !== "belirsiz") && (
+        <div className="rounded-lg border border-cizgi bg-panel px-5 py-4">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">Arıza kaynağı analizi</h3>
+            <Rozet durum={kaynak.sinif === "uretim" ? "uyari" : "bilgi"}
+              cocuk={`${KAYNAK_ADI[kaynak.sinif] || kaynak.sinif} · %${Math.round((kaynak.guven || 0) * 100)}`} />
+          </div>
+          {kaynak.gerekceler?.length > 0 && (
+            <ul className="mt-2.5 space-y-1 text-sm text-soluk">
+              {kaynak.gerekceler.map((g, i) => (
+                <li key={i} className="flex gap-2"><span className="shrink-0 text-sonuk">·</span>{g}</li>
+              ))}
+            </ul>
+          )}
+          {kaynak.garantiYorum && (
+            <p className="mt-3 border-t border-cizgi pt-3 text-sm text-soluk">{kaynak.garantiYorum}</p>
+          )}
+          <p className="mt-2 text-2xs leading-relaxed text-sonuk">
+            Bu analiz ölçüm verisine dayalı bir değerlendirmedir; garanti kararı üreticiye aittir.
+          </p>
         </div>
       )}
 
