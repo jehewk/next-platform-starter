@@ -191,6 +191,16 @@ export async function profilGuncelle(alanlar) {
   return api.post("/de/profil/guncelle", alanlar);
 }
 
+/**
+ * Cihaz kurulumu başlatır: backend 8 haneli eşleşme kodu üretir. Bu kod,
+ * BLE üzerinden cihaza gönderilir; cihaz WiFi'ye bağlanıp bu kodla kendini
+ * bu müşteriye bağlar (POST /de/kurulum/basla).
+ */
+export async function kurulumBaslat(musteriId) {
+  const r = await api.post("/de/kurulum/basla", { musteri_id: musteriId });
+  return { kod: r.eslesme_kodu, gecerlilikSn: r.gecerlilik_sn };
+}
+
 // ══════════════════ GARANTİ ══════════════════
 
 function garantiUyarla(g) {

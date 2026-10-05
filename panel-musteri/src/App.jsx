@@ -15,6 +15,7 @@ import { SohbetSaglayici } from "./api/sohbetler";
 
 const AnaSayfa   = lazy(() => import("./sayfalar/AnaSayfa"));
 const Cihazlar   = lazy(() => import("./sayfalar/Cihazlar"));
+const CihazEkle  = lazy(() => import("./sayfalar/CihazEkle"));
 const CihazDetay = lazy(() => import("./sayfalar/CihazDetay"));
 const Sohbet     = lazy(() => import("./sayfalar/Sohbet"));
 const Destek     = lazy(() => import("./sayfalar/Destek"));
@@ -67,6 +68,7 @@ function Uygulama() {
         <Routes>
           <Route path="/"           element={<AnaSayfa />} />
           <Route path="/cihazlar"   element={<Cihazlar />} />
+          <Route path="/cihaz-ekle" element={<CihazEkle />} />
           <Route path="/cihaz/:id"  element={<CihazDetay />} />
           <Route path="/sohbet"     element={<Sohbet />} />
           <Route path="/destek"     element={<Destek />} />

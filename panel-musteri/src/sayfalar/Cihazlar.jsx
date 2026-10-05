@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { BatteryCharging, Sun, ChevronRight } from "lucide-react";
+import { BatteryCharging, Sun, ChevronRight, Plus } from "lucide-react";
 import { SatirIskelet, HataKutusu } from "../bilesenler/VeriDurumu";
 import { useCanli } from "../api/useCanli";
 import { sistemimiGetir } from "../api/sistem";
@@ -21,9 +21,17 @@ export default function Cihazlar() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-xl font-semibold tracking-tight">Cihazlarım</h1>
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-xl font-semibold tracking-tight">Cihazlarım</h1>
+        <Link to="/cihaz-ekle" className="inline-flex min-h-[40px] items-center gap-1.5 rounded-md border border-cizgi px-3 text-sm font-medium text-metin active:bg-panel2">
+          <Plus size={16} /> Cihaz ekle
+        </Link>
+      </div>
       {!gruplar.length && (
-        <p className="rounded-xl border border-cizgi bg-panel px-5 py-12 text-center text-sm text-soluk">Hesabınızda henüz kurulu cihaz yok.</p>
+        <div className="rounded-xl border border-cizgi bg-panel px-5 py-12 text-center">
+          <p className="text-sm text-soluk">Hesabınızda henüz kurulu cihaz yok.</p>
+          <Link to="/cihaz-ekle" className="dugme-ana mt-4 inline-flex"><Plus size={16} /> Cihaz ekle</Link>
+        </div>
       )}
       {gruplar.map((g) => (
         <section key={g.tip}>
