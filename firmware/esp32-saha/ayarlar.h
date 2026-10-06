@@ -45,3 +45,9 @@
 #define PIN_DALY_TX   17   // MAX485 DI  <- ESP32 TX2
 #define PIN_DALY_DE   4    // MAX485 DE+RE (yon kontrolu); duz TTL UART ise -1 yap
 #define PIN_LED       2    // dahili LED: kurulum/baglanti durumu
+
+// ── Paylasimli RS485 hatti (ic hat; baska cihaz da konusuyor olabilir) ──
+// Gonder-once-dinle: ESP32 istek gondermeden once hatti bu kadar ms sessiz
+// bekler (listen-before-talk) -> paylasimli hatta carpisma azalir. 0 = kapali
+// (hatta baska master yoksa gerekmez). Tipik 30-50 ms.
+#define HAT_BOS_BEKLE_MS  40

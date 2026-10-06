@@ -56,6 +56,24 @@ modülü girer (RS485 yarı çift yöneldir; yön pini gerekir).
   `PIN_DALY_DE` değerini `-1` yap (yön kontrolü kapanır).
 - İlk bağlantıda `daly_bms.h`'de `DALY_HATA_AYIKLA` tanımlayıp ham çerçeveleri kontrol et.
 
+### İç RS485 hattına bağlanma (üretici dış portu kapatmışsa)
+
+RS485 **çok-noktalı** bir hattır: aynı A/B çiftine ESP32'yi **paralel bir düğüm**
+olarak eklersin, hiçbir şeyi kesmezsin (A, B, GND'ye dokun). İç hatta BMS'in
+kendi ekranı/MCU'su da konuşuyor olabilir; iki durum var:
+
+- **Hat sürekli dolu (biri sürekli sorguluyor):** ESP32 **hiç göndermeden**
+  hattı dinleyip geçen cevap çerçevelerini ayıklayabilir (pasif dinleme) —
+  sıfır çakışma. (Bu mod gerekirse eklenebilir.)
+- **Hat boşta:** ESP32 kendisi sorar. Çakışmayı azaltmak için **gönder-önce-dinle**
+  açıktır: `ayarlar.h`'deki `HAT_BOS_BEKLE_MS` (öntanımlı 40 ms) kadar hat sessiz
+  kalmadan göndermez; ayrıca 10 dk'da bir sorar ve yanıt gelmezse tekrar dener.
+
+**İlk iş — hattı dinle:** ESP32'yi bağlayıp `DALY_HATA_AYIKLA` ile seri monitörden
+bak. Sürekli `A5 ...` çerçeveleri akıyorsa hat dolu (pasif dinleme uygun);
+sessizse boş (sor + gönder-önce-dinle, hazır). Gördüğün ham baytları paylaşırsan
+doğru modu birlikte seçeriz.
+
 ## 3) Derleme (Arduino IDE / PlatformIO)
 
 - Kart: **ESP32 Dev Module** (esp32 Arduino core).

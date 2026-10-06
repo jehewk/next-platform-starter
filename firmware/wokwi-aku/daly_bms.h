@@ -19,6 +19,12 @@
 #include <Arduino.h>
 #include "olcum.h"
 
+// Paylasimli RS485 icin "gonder-once-dinle" bekleme suresi (ms). ayarlar.h
+// tanimlamazsa 0 (kapali) — duz UART / tek master senaryosunu bozmaz.
+#ifndef HAT_BOS_BEKLE_MS
+#define HAT_BOS_BEKLE_MS 0
+#endif
+
 class DalyBms {
  public:
   explicit DalyBms(HardwareSerial& port) : port_(port) {}
@@ -105,8 +111,26 @@ class DalyBms {
     return false;
   }
 
+#if defined(ESP32)
+  // Gönder-önce-dinle: hat HAT_BOS_BEKLE_MS boyunca sessiz kalana dek bekler
+  // (paylaşımlı RS485'te başka cihazın gönderimiyle çakışmayı azaltır).
+  void hatBosBekle() {
+    if (HAT_BOS_BEKLE_MS <= 0) return;
+    const uint32_t enGec = millis() + 2000;      // en fazla 2 sn bekle, sonra yine de gönder
+    uint32_t sonTrafik = millis();
+    while (millis() < enGec) {
+      if (port_.available()) { port_.read(); sonTrafik = millis(); }   // başka trafik, at
+      else if (millis() - sonTrafik >= (uint32_t)HAT_BOS_BEKLE_MS) return;
+      else delay(1);
+    }
+  }
+#endif
+
   bool sor(uint8_t komut, uint8_t* veri) {
     for (int deneme = 0; deneme < 2; deneme++) {
+#if defined(ESP32)
+      hatBosBekle();
+#endif
       gonder(komut);
       if (cerceveAl(komut, veri)) return true;
     }
