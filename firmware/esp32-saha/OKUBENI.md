@@ -76,10 +76,20 @@ doğru modu birlikte seçeriz.
 
 ## 3) Derleme (Arduino IDE / PlatformIO)
 
+**Tek komut (önerilen, tıklamasız):**
+```powershell
+cd firmware\esp32-saha
+.\yukle.ps1
+```
+`yukle.ps1` arduino-cli ile: ESP32 çekirdeğini + kütüphaneleri kurar (ilk sefer),
+portu bulur, **Huge APP** partition ile derler, yükler ve seri monitörü açar.
+arduino-cli yoksa nasıl kurulacağını söyler (`winget install ArduinoSA.CLI`).
+
+**Arduino IDE ile (grafik):**
 - Kart: **ESP32 Dev Module** (esp32 Arduino core).
-- Kütüphaneler (`libraries.txt`): **ArduinoJson** 7, **NimBLE-Arduino** 1.4.x.
-- Dosyalar: `sketch.ino` + tüm `.h`'ler.
-- Flash: TLS + BLE birlikte RAM ister; **Partition Scheme: "Huge APP"** (ya da min SPIFFS) seç.
+- Kütüphaneler: **ArduinoJson** 7, **NimBLE-Arduino** 1.4.x.
+- `firmware/esp32-saha/` klasörünü aç (`esp32-saha.ino` + tüm `.h`'ler).
+- Flash: TLS + BLE birlikte RAM ister; **Partition Scheme: "Huge APP"** seç.
 
 ## 4) Çalıştırma / test
 
