@@ -52,7 +52,8 @@ def yamali_backend():
             ("asistan", yamala.yama_asistan, False), ("hesap", yamala.yama_hesap, False),
             ("eposta", yamala.yama_eposta_dogrula, False), ("kvkk", yamala.yama_kvkk, False),
             ("sayfalama", yamala.yama_sayfalama, False),
-            ("profil", yamala.yama_profil, False), ("kayit konum", yamala.yama_kayit_konum, False)):
+            ("profil", yamala.yama_profil, False), ("kayit konum", yamala.yama_kayit_konum, False),
+            ("kurulum", yamala.yama_kurulum, False)):
         try:
             kaynak, _ = f(kaynak)
         except yamala.YamaAtla as e:
@@ -70,6 +71,7 @@ def yukle():
         'dennis-aku-verileri': sahte_aws.SahteTablo('cihaz_id', 'zaman'),
         'dennis-inverter-verileri': sahte_aws.SahteTablo('cihaz_id', 'zaman'),
         'dennis-bildirim': sahte_aws.SahteTablo('anahtar'),
+        'dennis-eslesmeler': sahte_aws.SahteTablo('kod'),
     }
     dyn, cog = sahte_aws.kur(tablolar)
     os.environ.update(USER_POOL_ID='HAVUZ', COGNITO_CLIENT_ID='IST', BILDIRIM_TABLOSU='dennis-bildirim')
@@ -290,6 +292,40 @@ def test_kayit_konum():
     ok("kayıt: seçilen harita konumu (lat/lng) yeni müşteri kaydına yazıldı")
 
 
+def test_kurulum():
+    mod, dyn, cog, tablolar = yukle()
+    tohum(dyn, cog)
+    C, E = dyn.t['dennis-cihazlar'], dyn.t['dennis-eslesmeler']
+
+    # basla: oturum şart
+    es(istek(mod, '/de/kurulum/basla', {})[0], 401, "oturumsuz basla")
+
+    # Müşteri kod alır; kod kendi musteri_id'siyle saklanır
+    k, g = istek(mod, '/de/kurulum/basla', {}, token=MUS)
+    es(k, 200, g)
+    kod = g['eslesme_kodu']
+    assert len(kod) == 8 and g['gecerlilik_sn'] > 0, g
+    es(E.get_item(Key={'kod': kod})['Item']['musteri_id'], 'MST-1', "kod sahibi yanlış")
+    ok("kurulum/basla: müşteri oturumuyla kod üretir, kendi musteri_id'sine bağlanır")
+
+    # tanit: yanlış anahtar / geçersiz kod reddedilir
+    es(istek(mod, '/de/kurulum/tanit', {'cihaz_id': 'AKU-9', 'anahtar': 'YANLIS', 'eslesme_kodu': kod})[0], 403, "yanlış anahtar")
+    es(istek(mod, '/de/kurulum/tanit', {'cihaz_id': 'AKU-9', 'anahtar': 'GIZLI-9', 'eslesme_kodu': 'YOKKOD00'})[0], 404, "geçersiz kod")
+
+    # Doğru anahtar + geçerli kod → cihaz o müşteriye bağlanır, durum=aktif, kod tükenir
+    k, g = istek(mod, '/de/kurulum/tanit', {'cihaz_id': 'AKU-9', 'anahtar': 'GIZLI-9', 'eslesme_kodu': kod})
+    es(k, 200, g)
+    cihaz = C.get_item(Key={'cihaz_id': 'AKU-9'})['Item']
+    es(cihaz['musteri_id'], 'MST-1', "cihaz müşteriye bağlanmadı")
+    es(cihaz['durum'], 'aktif', "durum aktif olmadı")
+    assert E.get_item(Key={'kod': kod}).get('Item') is None, "kod tek kullanımlık değil (silinmedi)"
+    ok("kurulum/tanit: cihaz anahtar+kodla doğru müşteriye bağlanır, kod tek kullanımlık")
+
+    # Tükenmiş kod ikinci kez kullanılamaz
+    es(istek(mod, '/de/kurulum/tanit', {'cihaz_id': 'AKU-9', 'anahtar': 'GIZLI-9', 'eslesme_kodu': kod})[0], 404, "tükenmiş kod")
+    ok("kurulum/tanit: tüketilen kod yeniden kullanılamaz")
+
+
 # ═══════════════════ C2. Bildirim aboneliği güvenliği (SSRF) ═══════════════════
 
 def test_bildirim_ssrf():
@@ -461,7 +497,7 @@ def test_yama_duzeltmeleri():
 
 if __name__ == '__main__':
     for test in (test_yetki, test_veri_akisi, test_hesap_entegrasyon, test_profil, test_kayit_konum,
-                 test_bildirim_ssrf, test_dayaniklilik, test_yuk, test_yama_duzeltmeleri):
+                 test_kurulum, test_bildirim_ssrf, test_dayaniklilik, test_yuk, test_yama_duzeltmeleri):
         print(f"\n{test.__name__}")
         test()
     print(f"\nHEPSİ TAMAM ({len(GECEN)} kontrol)")

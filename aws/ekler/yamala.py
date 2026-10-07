@@ -808,6 +808,91 @@ def yama_kayit_konum(kaynak):
     return kaynak, True
 
 
+_KURULUM_YARDIMCI = '''
+DE_ESLESME = 'dennis-eslesmeler'
+
+def _de_kurulum_basla(event, body):
+    """Musteri 'Cihaz Ekle' der: 8 haneli eslesme kodu uret, sakla, don.
+    Kod kodun sahibi musteriye baglidir; cihaz bu kodla kendini o musteriye baglar."""
+    import random as _r, time as _t
+    k = _de_kullanici(event)
+    mid = (k or {}).get('musteri_id') or str(body.get('musteri_id', '')).strip()
+    if not mid:
+        return 400, {'hata': 'musteri_id gerekli'}
+    abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'   # karisabilen 0/O/1/I/l yok
+    kod = ''.join(_r.choice(abc) for _ in range(8))
+    gecerlilik = 600  # sn (10 dk)
+    simdi = int(_t.time())
+    dynamodb.Table(DE_ESLESME).put_item(Item={
+        'kod': kod, 'musteri_id': mid, 'olusturma': simdi, 'ttl': simdi + gecerlilik})
+    return 200, {'eslesme_kodu': kod, 'gecerlilik_sn': gecerlilik}
+
+
+def _de_kurulum_tanit(body):
+    """Cihaz WiFi'ye baglandiktan sonra kendini kodun sahibine baglar (durum=aktif)."""
+    import time as _t
+    cid = str(body.get('cihaz_id', '')).strip()
+    anahtar = str(body.get('anahtar', '')).strip()
+    kod = str(body.get('eslesme_kodu', '')).strip().upper()
+    if not (cid and anahtar and kod):
+        return 400, {'hata': 'cihaz_id, anahtar ve eslesme_kodu gerekli'}
+    ct = dynamodb.Table(DE_CIHAZ)
+    cihaz = ct.get_item(Key={'cihaz_id': cid}).get('Item')
+    if not cihaz or cihaz.get('anahtar') != anahtar:
+        return 403, {'hata': 'Cihaz dogrulanamadi'}
+    et = dynamodb.Table(DE_ESLESME)
+    kayit = et.get_item(Key={'kod': kod}).get('Item')
+    if not kayit:
+        return 404, {'hata': 'Eslesme kodu gecersiz'}
+    if int(kayit.get('ttl', 0)) < int(_t.time()):
+        et.delete_item(Key={'kod': kod})
+        return 410, {'hata': 'Eslesme kodu suresi dolmus'}
+    mid = kayit['musteri_id']
+    ct.update_item(Key={'cihaz_id': cid},
+                   UpdateExpression='SET musteri_id = :m, durum = :d',
+                   ExpressionAttributeValues={':m': mid, ':d': 'aktif'})
+    et.delete_item(Key={'kod': kod})   # kod tek kullanimlik
+    return 200, {'ok': True, 'musteri_id': mid}
+'''
+
+
+def yama_kurulum(kaynak):
+    """M) /de/kurulum/basla + /de/kurulum/tanit: BLE provizyon eslestirme. Döner: (yeni, uygulandi)."""
+    if "/de/kurulum/tanit" in kaynak:
+        print("YAMA: kurulum uclari zaten var.")
+        return kaynak, False
+    if "_de_kullanici" not in kaynak:
+        raise YamaAtla("_de_kullanici bulunamadı; önce hesap uçları (yama F) uygulanmalı.")
+    for g in ("DE_CIHAZ", "def response", "dynamodb", "CIHAZ_ENDPOINTLERI"):
+        if g not in kaynak:
+            raise YamaAtla(f"'{g}' bulunamadı.")
+    # 1) /de/kurulum/tanit cihaz ucudur (oturum istemez): CIHAZ_ENDPOINTLERI'ne ekle
+    m = re.search(r"CIHAZ_ENDPOINTLERI\s*=\s*\(", kaynak)
+    if not m:
+        raise YamaAtla("CIHAZ_ENDPOINTLERI tuple'ı bulunamadı.")
+    kaynak = kaynak[:m.end()] + "\n    '/de/kurulum/tanit'," + kaynak[m.end():]
+    # 2) handler bloklari (/de/musteri/olustur'dan once)
+    h = re.search(r"^def\s+lambda_handler\s*\(\s*(\w+)", kaynak, re.M)
+    capa = re.search(
+        r"""^([ \t]*)if\s+path\s*==\s*['"]/de/musteri/olustur['"]\s+and\s+method\s*==\s*['"]POST['"]\s*:""",
+        kaynak, re.M)
+    if not (h and capa):
+        raise YamaAtla("lambda_handler ya da /de/musteri/olustur bulunamadı.")
+    olay, g = h.group(1), capa.group(1)
+    blok = (f"{g}if path == '/de/kurulum/basla' and method == 'POST':\n"
+            f"{g}    kod, govde = _de_kurulum_basla({olay}, body)\n"
+            f"{g}    return response(kod, govde)\n\n"
+            f"{g}if path == '/de/kurulum/tanit' and method == 'POST':\n"
+            f"{g}    kod, govde = _de_kurulum_tanit(body)\n"
+            f"{g}    return response(kod, govde)\n\n")
+    kaynak = kaynak[:capa.start()] + blok + kaynak[capa.start():]
+    # 3) yardimci fonksiyonlar lambda_handler oncesine
+    h2 = re.search(r"^def\s+lambda_handler\s*\(", kaynak, re.M)
+    kaynak = kaynak[:h2.start()] + _KURULUM_YARDIMCI.lstrip("\n") + "\n\n" + kaynak[h2.start():]
+    print("YAMA: kurulum uclari (/de/kurulum/basla, /de/kurulum/tanit) eklendi.")
+    return kaynak, True
+
+
 def main():
     if len(sys.argv) == 3 and sys.argv[1] in ("--olcum-tablolari", "--olcum-tablosu"):
         try:
@@ -831,7 +916,8 @@ def main():
                      ("sayfalama", yama_sayfalama),
                      ("birlestir uyari korumasi", yama_birlestir_uyari),
                      ("profil guncelleme", yama_profil),
-                     ("kayit konum", yama_kayit_konum)):
+                     ("kayit konum", yama_kayit_konum),
+                     ("kurulum uclari", yama_kurulum)):
         try:
             kaynak, u = yama(kaynak)
             uygulandi.append(u)
