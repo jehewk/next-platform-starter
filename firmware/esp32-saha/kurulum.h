@@ -9,7 +9,8 @@
 // karakteristiginden telefona haber verir:
 //     {"durum":"baglaniyor"|"wifi"|"kayit"|"tamam"|"hata","mesaj":"..."}
 //
-// Kutuphane: NimBLE-Arduino 1.4.x, ArduinoJson 7 (libraries.txt).
+// Kutuphane: NimBLE-Arduino 1.x veya 2.x, ArduinoJson 7 (libraries.txt).
+// (onWrite callback imzasi 2.x'te degisti; asagida surum korumasi var.)
 
 #include <time.h>
 #include <Preferences.h>
@@ -148,7 +149,17 @@ class Kurulum {
   class YazCB : public NimBLECharacteristicCallbacks {
    public:
     explicit YazCB(Kurulum* k) : k_(k) {}
-    void onWrite(NimBLECharacteristic* c) override { k_->bilgiAlindi(String(c->getValue().c_str())); }
+#if defined(NIMBLE_CPP_VERSION_MAJOR) && NIMBLE_CPP_VERSION_MAJOR >= 2
+    // NimBLE-Arduino 2.x: callback imzasina NimBLEConnInfo eklendi.
+    void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& connInfo) override {
+      k_->bilgiAlindi(String(c->getValue().c_str()));
+    }
+#else
+    // NimBLE-Arduino 1.x
+    void onWrite(NimBLECharacteristic* c) override {
+      k_->bilgiAlindi(String(c->getValue().c_str()));
+    }
+#endif
    private:
     Kurulum* k_;
   };
