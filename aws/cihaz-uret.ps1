@@ -37,13 +37,14 @@ Adim "Hesap dogrulaniyor"
 $kim = HesapDogrula
 Tamam "hesap $($kim.Account) · bolge $Bolge"
 
-# Kimlik ve anahtar
+# Kimlik ve anahtar — AKU-DENNIS-<tarih><rastgele> (hepsi rakam, benzersiz seri)
 if (-not $CihazId) {
   $onek = if ($Tip -eq "inverter") { "INV" } else { "AKU" }
-  $CihazId = "$onek-WOKWI-" + ([guid]::NewGuid().ToString("N").Substring(0, 4).ToUpperInvariant())
+  $seri = (Get-Date -Format "yyMMdd") + ("{0:D4}" -f (Get-Random -Minimum 0 -Maximum 10000))
+  $CihazId = "$onek-DENNIS-$seri"
 }
 if (-not $Model) { $Model = if ($Tip -eq "inverter") { "DE-INV-5K" } else { "DE-LFP-16S-100" } }
-if (-not $Parti) { $Parti = "WOKWI-" + (Get-Date -Format "yyyyMM") }
+if (-not $Parti) { $Parti = "DE-" + (Get-Date -Format "yyyyMM") }
 $anahtar = "DEV-" + [guid]::NewGuid().ToString("N")
 
 Adim "Cihaz tablosu kontrol ediliyor ($Tablo)"
