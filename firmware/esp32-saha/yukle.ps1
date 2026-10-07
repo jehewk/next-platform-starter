@@ -99,11 +99,17 @@ Tamam "kutuphaneler hazir (ArduinoJson, NimBLE-Arduino)"
 
 if (-not $Port) {
   Adim "ESP32 portu araniyor"
-  $satir = & arduino-cli board list 2>$null | Select-String "esp32|CP210|CH340|CH910|USB-SERIAL|Silicon|wchusb" | Select-Object -First 1
+  $liste = & arduino-cli board list 2>$null
+  # 1) Once bilinen USB-seri cipleri ara (kesin ESP32/USB-UART).
+  $satir = $liste | Select-String "esp32|CP210|CH340|CH910|USB-SERIAL|Silicon|wchusb" | Select-Object -First 1
+  # 2) Bulamazsan "Unknown" olsa da USB uzerinden gelen ilk seri portu al.
+  if (-not $satir) { $satir = $liste | Select-String "Serial Port \(USB\)" | Select-Object -First 1 }
+  # 3) Son care: COMx ile baslayan ilk satir.
+  if (-not $satir) { $satir = $liste | Select-String "^COM\d+\s" | Select-Object -First 1 }
   if ($satir) { $Port = ($satir.ToString().Trim() -split '\s+')[0] }
 }
 if (-not $Port) {
-  Write-Host "Port otomatik bulunamadi. Takili mi? Suradan secip -Port ile ver:" -ForegroundColor Red
+  Write-Host "Port otomatik bulunamadi. Takili mi? Suradan secip -Port ile ver (or. -Port COM5):" -ForegroundColor Red
   & arduino-cli board list
   exit 1
 }
