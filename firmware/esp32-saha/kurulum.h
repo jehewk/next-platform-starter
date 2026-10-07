@@ -76,14 +76,43 @@ class Kurulum {
   }
 
   // WiFi'ye baglanir (olcum gonderimi de bunu kullanir). TLS icin saati de bekletir.
+  // Basarisizsa nedenini wifiHata_'ya yazar (uygulamaya ve seri porta gider).
   bool wifiBaglan() {
     if (WiFi.status() == WL_CONNECTED) return true;
-    if (ssid_.length() == 0) return false;
+    if (ssid_.length() == 0) { wifiHata_ = "ssid bos"; return false; }
     WiFi.mode(WIFI_STA);
+    WiFi.disconnect(true, true);
+    delay(200);
+
+    // Teshis: ESP32 YALNIZCA 2.4 GHz tarar/baglanir. Hedef ag gorunur mu?
+    bool gorunur = false;
+    int n = WiFi.scanNetworks();
+    Serial.printf("WiFi taramasi (2.4 GHz): %d ag\n", n < 0 ? 0 : n);
+    for (int i = 0; i < n; i++) {
+      Serial.printf("  '%s'  %d dBm\n", WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+      if (WiFi.SSID(i) == ssid_) gorunur = true;
+    }
+    WiFi.scanDelete();
+    if (n > 0 && !gorunur)
+      Serial.printf("UYARI: '%s' 2.4 GHz'de gorunmuyor. ESP32 5 GHz AGLARI GOREMEZ.\n", ssid_.c_str());
+
     WiFi.begin(ssid_.c_str(), sifre_.c_str());
     const uint32_t bas = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - bas < 20000) delay(250);
-    if (WiFi.status() != WL_CONNECTED) return false;
+    wl_status_t s = WiFi.status();
+    while (s != WL_CONNECTED && millis() - bas < 25000) {
+      delay(250);
+      s = WiFi.status();
+      if (s == WL_NO_SSID_AVAIL || s == WL_CONNECT_FAILED) break;
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+      if (n > 0 && !gorunur)      wifiHata_ = "ag 2.4GHz'de yok (5GHz/menzil?)";
+      else if (s == WL_NO_SSID_AVAIL) wifiHata_ = "ag bulunamadi";
+      else                        wifiHata_ = "sifre yanlis olabilir";
+      Serial.printf("WiFi baglanamadi (status=%d): %s\n", (int)s, wifiHata_.c_str());
+      return false;
+    }
+    wifiHata_ = "";
+    Serial.printf("WiFi baglandi: '%s'  IP %s\n", ssid_.c_str(), WiFi.localIP().toString().c_str());
     configTime(0, 0, "pool.ntp.org", "time.google.com");
     struct tm t; const uint32_t t0 = millis();
     while (time(nullptr) < 1700000000UL && millis() - t0 < 12000) { delay(300); getLocalTime(&t, 0); }
@@ -96,7 +125,13 @@ class Kurulum {
     if (!yeniBilgi_) return 0;
     yeniBilgi_ = false;
     bildirGonder("{\"durum\":\"wifi\"}");
-    if (!wifiBaglan()) { bildirGonder("{\"durum\":\"hata\",\"mesaj\":\"wifi baglanamadi\"}"); return -1; }
+    if (!wifiBaglan()) {
+      char m[160];
+      snprintf(m, sizeof(m), "{\"durum\":\"hata\",\"mesaj\":\"WiFi: %s\"}",
+               wifiHata_.length() ? wifiHata_.c_str() : "baglanamadi");
+      bildirGonder(m);
+      return -1;
+    }
     bildirGonder("{\"durum\":\"kayit\"}");
     const int kod = tanit(bekleyenKod_);
     if (kod == 200) {
@@ -179,7 +214,7 @@ class Kurulum {
   };
 
   Preferences nvs_;
-  String ssid_, sifre_, bekleyenKod_;
+  String ssid_, sifre_, bekleyenKod_, wifiHata_;
   bool bagli_ = false, yeniBilgi_ = false, bleAcik_ = false;
   NimBLECharacteristic* yaz_ = nullptr;
   NimBLECharacteristic* bildir_ = nullptr;
