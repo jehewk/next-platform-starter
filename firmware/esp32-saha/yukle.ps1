@@ -48,7 +48,7 @@ if (-not (KomutVar "arduino-cli")) {
   if (-not (KomutVar "arduino-cli")) {
     try {
       Adim "arduino-cli resmi paketi indiriliyor (winget gerekmez)"
-      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocol]::Tls12   # eski PS5.1 icin
+      try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}  # eski PS5.1 icin
       $mimari = if ([Environment]::Is64BitOperatingSystem) { "Windows_64bit" } else { "Windows_32bit" }
       $url = "https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_$mimari.zip"
       $hedef = Join-Path $env:LOCALAPPDATA "ArduinoCLI"
