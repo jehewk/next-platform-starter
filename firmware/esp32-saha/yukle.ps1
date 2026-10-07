@@ -44,11 +44,36 @@ if (-not (KomutVar "arduino-cli")) {
       }
     }
   }
+  # winget yoksa / basarisizsa: resmi zip'i dogrudan indir (winget gerekmez).
+  if (-not (KomutVar "arduino-cli")) {
+    try {
+      Adim "arduino-cli resmi paketi indiriliyor (winget gerekmez)"
+      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocol]::Tls12   # eski PS5.1 icin
+      $mimari = if ([Environment]::Is64BitOperatingSystem) { "Windows_64bit" } else { "Windows_32bit" }
+      $url = "https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_$mimari.zip"
+      $hedef = Join-Path $env:LOCALAPPDATA "ArduinoCLI"
+      $zip = Join-Path $env:TEMP "arduino-cli.zip"
+      New-Item -ItemType Directory -Force -Path $hedef | Out-Null
+      $eski = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
+      Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+      $ProgressPreference = $eski
+      Expand-Archive -Path $zip -DestinationPath $hedef -Force
+      Remove-Item $zip -ErrorAction SilentlyContinue
+      $env:Path = "$hedef;$env:Path"
+      # Kalici olsun diye kullanicinin PATH'ine da ekle (yeni pencerelerde de bulunur).
+      $kullaniciPath = [Environment]::GetEnvironmentVariable("Path", "User")
+      if ($kullaniciPath -notlike "*$hedef*") {
+        [Environment]::SetEnvironmentVariable("Path", "$hedef;$kullaniciPath", "User")
+      }
+      if (KomutVar "arduino-cli") { Tamam "arduino-cli indirildi ve kuruldu ($hedef)" }
+    } catch {
+      Uyari "Otomatik indirme basarisiz: $($_.Exception.Message)"
+    }
+  }
   if (-not (KomutVar "arduino-cli")) {
     Write-Host "arduino-cli otomatik kurulamadi." -ForegroundColor Red
     Write-Host "Elle kur (birini sec):" -ForegroundColor Yellow
-    Write-Host "  winget install ArduinoSA.CLI"
-    Write-Host "  ya da: https://arduino.github.io/arduino-cli/latest/installation/"
+    Write-Host "  https://arduino.github.io/arduino-cli/latest/installation/ (zip indir, exe'yi bir klasore koy)"
     Write-Host "Kurduktan sonra YENI bir PowerShell acip tekrar calistir." -ForegroundColor Yellow
     exit 1
   }
