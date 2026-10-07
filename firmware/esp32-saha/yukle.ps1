@@ -28,12 +28,30 @@ function Tamam($m) { Write-Host "  + $m" -ForegroundColor Green }
 function Uyari($m) { Write-Host "  ! $m" -ForegroundColor Yellow }
 
 if (-not (KomutVar "arduino-cli")) {
-  Write-Host "arduino-cli bulunamadi." -ForegroundColor Red
-  Write-Host "Kurmak icin (birini sec):" -ForegroundColor Yellow
-  Write-Host "  winget install ArduinoSA.CLI"
-  Write-Host "  ya da: https://arduino.github.io/arduino-cli/latest/installation/"
-  Write-Host "Kurduktan sonra yeni bir PowerShell acip tekrar calistir."
-  exit 1
+  Uyari "arduino-cli bulunamadi — kurulmaya calisiliyor"
+  if (KomutVar "winget") {
+    Adim "winget ile kuruluyor (ArduinoSA.CLI)"
+    & winget install --id ArduinoSA.CLI -e --accept-source-agreements --accept-package-agreements
+    # winget kurulumu mevcut oturumun PATH'ine hemen yansimaz; dogrudan dosyayi ara.
+    if (-not (KomutVar "arduino-cli")) {
+      $aday = @(
+        "$env:LOCALAPPDATA\Microsoft\WinGet\Links\arduino-cli.exe",
+        "$env:ProgramFiles\Arduino CLI\arduino-cli.exe"
+      ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+      if ($aday) {
+        $env:Path = (Split-Path $aday) + ";" + $env:Path
+        Tamam "arduino-cli bu oturuma eklendi"
+      }
+    }
+  }
+  if (-not (KomutVar "arduino-cli")) {
+    Write-Host "arduino-cli otomatik kurulamadi." -ForegroundColor Red
+    Write-Host "Elle kur (birini sec):" -ForegroundColor Yellow
+    Write-Host "  winget install ArduinoSA.CLI"
+    Write-Host "  ya da: https://arduino.github.io/arduino-cli/latest/installation/"
+    Write-Host "Kurduktan sonra YENI bir PowerShell acip tekrar calistir." -ForegroundColor Yellow
+    exit 1
+  }
 }
 Tamam "arduino-cli bulundu"
 
