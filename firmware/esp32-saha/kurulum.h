@@ -48,8 +48,22 @@ class Kurulum {
     yaz_->setCallbacks(new YazCB(this));
     svc->start();
     NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+    // 128-bit servis UUID (18 bayt) + uzun ad (28+ kr) tek 31 baytlik pakete
+    // sigmaz. Ana pakete flags+UUID, ADI scan response'a koy (orada yer var).
+#if defined(NIMBLE_CPP_VERSION_MAJOR) && NIMBLE_CPP_VERSION_MAJOR >= 2
+    NimBLEAdvertisementData adData;
+    adData.setFlags(0x06);                 // genel kesfedilebilir + BR/EDR yok
+    adData.addServiceUUID(BLE_SERVIS_UUID);
+    adv->setAdvertisementData(adData);
+    NimBLEAdvertisementData srData;
+    srData.setName(ad.c_str());            // tam ad scan response'ta
+    adv->setScanResponseData(srData);
+    adv->enableScanResponse(true);
+#else
+    // 1.x: ad init()'ten gelir; uzun ad otomatik scan response'a tasinir.
     adv->addServiceUUID(BLE_SERVIS_UUID);
-    adv->setName(ad.c_str());
+    adv->setScanResponse(true);
+#endif
     adv->start();
     bleAcik_ = true;
     Serial.printf("BLE provizyon acik: %s (telefondan WiFi + eslesme kodu bekleniyor)\n", ad.c_str());
