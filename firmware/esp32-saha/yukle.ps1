@@ -1,5 +1,5 @@
 <#
-  yukle.ps1 — ESP32'ye TEK KOMUTLA derle + yukle + seri monitor (arduino-cli).
+  yukle.ps1 - ESP32'ye TEK KOMUTLA derle + yukle + seri monitor (arduino-cli).
   Arduino IDE'yi acip tiklamana gerek yok.
 
   Kullanim (PowerShell, bu klasorde):
@@ -28,7 +28,7 @@ function Tamam($m) { Write-Host "  + $m" -ForegroundColor Green }
 function Uyari($m) { Write-Host "  ! $m" -ForegroundColor Yellow }
 
 if (-not (KomutVar "arduino-cli")) {
-  Uyari "arduino-cli bulunamadi — kurulmaya calisiliyor"
+  Uyari "arduino-cli bulunamadi - kurulmaya calisiliyor"
   if (KomutVar "winget") {
     Adim "winget ile kuruluyor (ArduinoSA.CLI)"
     & winget install --id ArduinoSA.CLI -e --accept-source-agreements --accept-package-agreements
@@ -123,7 +123,7 @@ if ($LASTEXITCODE -ne 0) {
 Tamam "yuklendi"
 
 if ($Monitor) {
-  Adim "Seri monitor ($Baud) — cikmak icin Ctrl+C"
+  Adim "Seri monitor ($Baud) - cikmak icin Ctrl+C"
   & arduino-cli monitor -p $Port -c baudrate=$Baud
 } else {
   Tamam "bitti (monitor atlandi)"
