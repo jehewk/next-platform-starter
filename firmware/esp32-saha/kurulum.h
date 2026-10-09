@@ -43,11 +43,15 @@ class Kurulum {
     NimBLEDevice::init(ad.c_str());
     NimBLEServer* s = NimBLEDevice::createServer();
     NimBLEService* svc = s->createService(BLE_SERVIS_UUID);
+    s->setCallbacks(new SunucuCB(this));   // baglanti kopunca reklami yeniden baslat
     yaz_    = svc->createCharacteristic(BLE_YAZ_UUID, NIMBLE_PROPERTY::WRITE);
     bildir_ = svc->createCharacteristic(BLE_BILDIR_UUID, NIMBLE_PROPERTY::NOTIFY);
     yaz_->setCallbacks(new YazCB(this));
     svc->start();
     NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+    // Hizli kesif icin reklam araligini kisalt (birim 0.625 ms): ~100-200 ms.
+    adv->setMinInterval(160);
+    adv->setMaxInterval(320);
     // 128-bit servis UUID (18 bayt) + uzun ad (28+ kr) tek 31 baytlik pakete
     // sigmaz. Ana pakete flags+UUID, ADI scan response'a koy (orada yer var).
 #if defined(NIMBLE_CPP_VERSION_MAJOR) && NIMBLE_CPP_VERSION_MAJOR >= 2
@@ -73,6 +77,15 @@ class Kurulum {
     if (!bleAcik_) return;
     NimBLEDevice::deinit(true);
     bleAcik_ = false;
+  }
+
+  // Telefon bağlanıp kopunca reklam durur; provizyon bitmediyse yeniden başlat
+  // ki cihaz listede sürekli görünsün (geç/arada görünme sorununu giderir).
+  void bleYenidenReklam() {
+    if (bleAcik_ && !bagli_) {
+      NimBLEDevice::getAdvertising()->start();
+      Serial.println("BLE: baglanti koptu, reklam yeniden basladi.");
+    }
   }
 
   // WiFi'ye baglanir (olcum gonderimi de bunu kullanir). TLS icin saati de bekletir.
@@ -234,6 +247,19 @@ class Kurulum {
     void onWrite(NimBLECharacteristic* c) override {
       k_->bilgiAlindi(String(c->getValue().c_str()));
     }
+#endif
+   private:
+    Kurulum* k_;
+  };
+
+  // Sunucu olaylari: baglanti kopunca reklami yeniden baslat (surekli gorunur).
+  class SunucuCB : public NimBLEServerCallbacks {
+   public:
+    explicit SunucuCB(Kurulum* k) : k_(k) {}
+#if defined(NIMBLE_CPP_VERSION_MAJOR) && NIMBLE_CPP_VERSION_MAJOR >= 2
+    void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int) override { k_->bleYenidenReklam(); }
+#else
+    void onDisconnect(NimBLEServer*) override { k_->bleYenidenReklam(); }
 #endif
    private:
     Kurulum* k_;
