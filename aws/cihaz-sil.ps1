@@ -79,7 +79,7 @@ foreach ($id in $hedefler) {
       Cagir dynamodb delete-item --table-name $olcumTablo --key "file://$k" | Out-Null
       Remove-Item $k -ErrorAction SilentlyContinue
     }
-    if ($olcumler.Count) { Bilgi "$olcumTablo: $($olcumler.Count) olcum silindi" }
+    if ($olcumler.Count) { Bilgi "${olcumTablo}: $($olcumler.Count) olcum silindi" }
   }
   # 2) Cihaz kaydi
   $ck = JsonDosyasi @{ cihaz_id = @{ S = $id } }
