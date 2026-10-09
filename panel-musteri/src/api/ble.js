@@ -40,6 +40,11 @@ export async function bilgiGonder(deviceId, ssid, sifre, kod) {
   await BleClient.write(deviceId, BLE_SERVIS, YAZ, textToDataView(json));
 }
 
+/** Cihazdan çevredeki 2.4 GHz ağ listesini ister (yanıt durumDinle'den "ag"/"aglar_son" gelir). */
+export async function aglariTara(deviceId) {
+  await BleClient.write(deviceId, BLE_SERVIS, YAZ, textToDataView(JSON.stringify({ komut: "tara" })));
+}
+
 export async function baglantiyiKapat(deviceId) {
   try { await BleClient.stopNotifications(deviceId, BLE_SERVIS, BILDIR); } catch { /* yok say */ }
   try { await BleClient.disconnect(deviceId); } catch { /* yok say */ }

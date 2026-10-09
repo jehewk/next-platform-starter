@@ -119,9 +119,33 @@ class Kurulum {
     return true;
   }
 
+  // Cevredeki 2.4 GHz aglari tarar ve uygulamaya tek tek bildirir. Musteri
+  // listeden secer -> yanlis band (5 GHz) secmek imkansiz (cihaz goremez).
+  void aglariGonder() {
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect(false, false);
+    bildirGonder("{\"durum\":\"tarama\"}");
+    int n = WiFi.scanNetworks();
+    Serial.printf("Tarama (app icin): %d ag\n", n < 0 ? 0 : n);
+    int gonderilen = 0;
+    for (int i = 0; i < n && gonderilen < 20; i++) {
+      String s = WiFi.SSID(i);
+      if (s.length() == 0) continue;            // gizli ag
+      s.replace("\\", ""); s.replace("\"", "");  // JSON guvenligi
+      char m[140];
+      snprintf(m, sizeof(m), "{\"durum\":\"ag\",\"ad\":\"%s\",\"guc\":%d}", s.c_str(), (int)WiFi.RSSI(i));
+      bildirGonder(m);
+      gonderilen++;
+      delay(40);                                 // notify'lar birbirine girmesin
+    }
+    WiFi.scanDelete();
+    bildirGonder("{\"durum\":\"aglar_son\"}");
+  }
+
   // loop'ta cagrilir. Telefon yeni bilgi yazdiysa WiFi+tanit yapar.
   // Döner: 1 = kurulum tamamlandi, -1 = hata, 0 = yapilacak is yok.
   int isle() {
+    if (taramaIstendi_) { taramaIstendi_ = false; aglariGonder(); return 0; }
     if (!yeniBilgi_) return 0;
     yeniBilgi_ = false;
     bildirGonder("{\"durum\":\"wifi\"}");
@@ -154,6 +178,8 @@ class Kurulum {
   void bilgiAlindi(const String& json) {
     JsonDocument d;
     if (deserializeJson(d, json)) { bildirGonder("{\"durum\":\"hata\",\"mesaj\":\"gecersiz json\"}"); return; }
+    // Uygulama "ag listesi" isteyebilir: {"komut":"tara"}
+    if (String((const char*)(d["komut"] | "")) == "tara") { taramaIstendi_ = true; return; }
     String ssid = String((const char*)(d["ssid"] | ""));
     String sifre = String((const char*)(d["sifre"] | ""));
     String kod = String((const char*)(d["kod"] | ""));
@@ -215,7 +241,7 @@ class Kurulum {
 
   Preferences nvs_;
   String ssid_, sifre_, bekleyenKod_, wifiHata_;
-  bool bagli_ = false, yeniBilgi_ = false, bleAcik_ = false;
+  bool bagli_ = false, yeniBilgi_ = false, bleAcik_ = false, taramaIstendi_ = false;
   NimBLECharacteristic* yaz_ = nullptr;
   NimBLECharacteristic* bildir_ = nullptr;
 };

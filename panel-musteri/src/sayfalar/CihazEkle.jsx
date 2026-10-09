@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { ChevronLeft, Bluetooth, Wifi, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Bluetooth, Wifi, WifiOff, Loader2, CheckCircle2, AlertTriangle, RefreshCw, Lock } from "lucide-react";
 import { useVeri } from "../api/useVeri";
 import { musteriListesi, kurulumBaslat } from "../api/servis";
-import { cihazaBaglan, durumDinle, bilgiGonder, baglantiyiKapat, bleDestekli } from "../api/ble";
+import { cihazaBaglan, durumDinle, bilgiGonder, aglariTara, baglantiyiKapat, bleDestekli } from "../api/ble";
 import { Iskelet } from "../bilesenler/VeriDurumu";
 
 // Firmware'in bildirdiği durum -> kullanıcıya gösterilecek metin
@@ -12,64 +12,97 @@ const DURUM_METNI = {
   wifi: "Cihaz Wi-Fi'ye bağlanıyor…",
   kayit: "Cihaz sisteme kaydediliyor…",
   tamam: "Kurulum tamamlandı!",
-  hata: "Bir sorun oluştu.",
 };
+
+// Sinyal gücü (dBm) -> 0..3 çubuk
+function cubuk(guc) {
+  if (guc >= -55) return 3;
+  if (guc >= -70) return 2;
+  if (guc >= -82) return 1;
+  return 0;
+}
 
 export default function CihazEkle() {
   const git = useNavigate();
   const { veri: musteriler, yukleniyor } = useVeri(musteriListesi);
   const musteriId = musteriler?.[0]?.id;
 
+  const [asama, setAsama] = useState("baslangic"); // baslangic | tarama | secim | calisiyor | tamam | hata
+  const [aglar, setAglar] = useState([]);           // [{ad, guc}]
   const [ssid, setSsid] = useState("");
   const [sifre, setSifre] = useState("");
-  const [asama, setAsama] = useState("form");   // form | calisiyor | tamam | hata
   const [durum, setDurum] = useState("");
   const [hata, setHata] = useState("");
 
+  const idRef = useRef(null);
+  const bittiRef = useRef(false);
+
   const destekli = bleDestekli();
 
+  // Cihazdan gelen tüm bildirimleri işleyen tek nokta
+  function bildirimIsle(m) {
+    if (!m?.durum) return;
+    if (m.durum === "ag" && m.ad) {
+      setAglar((onceki) => {
+        const v = onceki.filter((x) => x.ad !== m.ad);
+        v.push({ ad: m.ad, guc: m.guc ?? -100 });
+        return v.sort((a, b) => b.guc - a.guc);
+      });
+      return;
+    }
+    if (m.durum === "aglar_son") { setAsama("secim"); return; }
+    if (DURUM_METNI[m.durum]) setDurum(DURUM_METNI[m.durum]);
+    if (m.durum === "tamam" && !bittiRef.current) {
+      bittiRef.current = true; setAsama("tamam"); baglantiyiKapat(idRef.current);
+    }
+    if (m.durum === "hata" && !bittiRef.current) {
+      bittiRef.current = true;
+      setHata(m.mesaj || "Cihaz kurulumu tamamlayamadı.");
+      setAsama("hata"); baglantiyiKapat(idRef.current);
+    }
+  }
+
+  // 1) Cihazı bul, bağlan, ağları tara
+  async function cihaziBul() {
+    setHata(""); setAglar([]); setAsama("tarama"); setDurum("Cihaz aranıyor…");
+    bittiRef.current = false;
+    try {
+      const id = await cihazaBaglan(() => { /* koparsa akış biter */ });
+      idRef.current = id;
+      setDurum("Bağlanıldı, Wi-Fi ağları taranıyor…");
+      await durumDinle(id, bildirimIsle);
+      await aglariTara(id);
+      // Güvenlik ağı: 15 sn içinde liste gelmezse yine de seçime geç (elle giriş)
+      setTimeout(() => setAsama((a) => (a === "tarama" ? "secim" : a)), 15000);
+    } catch (err) {
+      if (idRef.current) baglantiyiKapat(idRef.current);
+      setHata(err?.message || "Bağlantı kurulamadı. Bluetooth'un açık olduğundan emin olun.");
+      setAsama("hata");
+    }
+  }
+
+  // 2) Seçilen ağ + şifre + eşleşme kodunu cihaza gönder
   async function kur(e) {
     e.preventDefault();
-    if (!ssid.trim()) { setHata("Wi-Fi adını girin."); return; }
+    if (!ssid.trim()) { setHata("Bir Wi-Fi ağı seçin veya adını girin."); return; }
     if (!musteriId) { setHata("Hesap bilgisi yüklenemedi; tekrar deneyin."); return; }
-    setHata("");
-    setAsama("calisiyor");
-    setDurum("Cihaz aranıyor…");
-    let id = null;
+    setHata(""); setAsama("calisiyor"); setDurum("Eşleşme kodu alınıyor…");
     try {
-      // 1) BLE: cihazı seç ve bağlan (OS seçicisi açılır)
-      id = await cihazaBaglan(() => { /* koparsa akış zaten biter */ });
-      setDurum("Cihaza bağlanıldı, hazırlanıyor…");
-
-      // 2) Cihazın durum bildirimlerini dinle
-      let bitti = false;
-      await durumDinle(id, (m) => {
-        if (m?.durum && DURUM_METNI[m.durum]) setDurum(DURUM_METNI[m.durum]);
-        if (m?.durum === "tamam" && !bitti) { bitti = true; setAsama("tamam"); baglantiyiKapat(id); }
-        if (m?.durum === "hata" && !bitti) {
-          bitti = true; setHata(m.mesaj || "Cihaz kurulumu tamamlayamadı."); setAsama("hata"); baglantiyiKapat(id);
-        }
-      });
-
-      // 3) Eşleşme kodunu al ve Wi-Fi + kodu cihaza gönder
       const { kod } = await kurulumBaslat(musteriId);
       setDurum("Cihaza Wi-Fi bilgisi gönderiliyor…");
-      await bilgiGonder(id, ssid.trim(), sifre, kod);
-
-      // 4) Güvenlik ağı: cihaz 60 sn içinde "tamam" demezse uyar
+      await bilgiGonder(idRef.current, ssid.trim(), sifre, kod);
       setTimeout(() => {
         setAsama((a) => {
           if (a === "calisiyor") {
-            setHata("Cihazdan yanıt gelmedi. Wi-Fi şifresini ve cihazın menzilde olduğunu kontrol edip tekrar deneyin.");
-            baglantiyiKapat(id);
+            setHata("Cihazdan yanıt gelmedi. Wi-Fi şifresini kontrol edip tekrar deneyin.");
+            baglantiyiKapat(idRef.current);
             return "hata";
           }
           return a;
         });
-      }, 60000);
+      }, 45000);
     } catch (err) {
-      if (id) baglantiyiKapat(id);
-      setHata(err?.message || "Bağlantı kurulamadı. Bluetooth'un açık olduğundan emin olun.");
+      setHata(err?.message || "Gönderilemedi; tekrar deneyin.");
       setAsama("hata");
     }
   }
@@ -100,21 +133,70 @@ export default function CihazEkle() {
           <p className="mt-2 text-sm text-soluk">Birkaç dakika içinde ölçümler gelmeye başlayacak.</p>
           <button onClick={() => git("/cihazlar")} className="dugme-ana mt-6 w-full">Cihazlarıma dön</button>
         </div>
+      ) : asama === "baslangic" || asama === "tarama" ? (
+        <div className="space-y-4 rounded-xl border border-cizgi bg-panel p-5">
+          <p className="text-sm text-soluk">
+            Önce cihazı bulup bağlanacağız, sonra cihazın gördüğü Wi-Fi ağlarını listeleyeceğiz.
+          </p>
+          {asama === "tarama" && (
+            <div className="flex items-center gap-2 rounded-md border border-cizgi bg-panel2 px-3 py-2.5 text-sm">
+              <Loader2 size={15} className="animate-spin shrink-0" /> {durum || "İşleniyor…"}
+            </div>
+          )}
+          {hata && (
+            <p className="flex items-start gap-2 rounded-md border border-kritik/30 bg-kritik/10 px-3 py-2 text-xs text-kritik">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" /> {hata}
+            </p>
+          )}
+          <button onClick={cihaziBul} disabled={asama === "tarama"} className="dugme-ana min-h-[44px] w-full">
+            {asama === "tarama" ? <Loader2 size={15} className="animate-spin" /> : <Bluetooth size={15} />}
+            Cihazı bul
+          </button>
+        </div>
       ) : (
+        // secim | calisiyor | hata
         <form onSubmit={kur} className="space-y-4 rounded-xl border border-cizgi bg-panel p-5">
+          <div className="flex items-center justify-between">
+            <span className="etiket flex items-center gap-1.5"><Wifi size={14} /> Wi-Fi ağınızı seçin</span>
+            <button type="button" onClick={cihaziBul} disabled={asama === "calisiyor"}
+              className="inline-flex items-center gap-1 text-xs text-soluk hover:text-metin">
+              <RefreshCw size={13} /> Yenile
+            </button>
+          </div>
+
+          {aglar.length > 0 ? (
+            <div className="max-h-56 space-y-1.5 overflow-y-auto">
+              {aglar.map((a) => (
+                <button type="button" key={a.ad} onClick={() => setSsid(a.ad)} disabled={asama === "calisiyor"}
+                  className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-sm ${
+                    ssid === a.ad ? "border-vurgu bg-vurgu/10 text-metin" : "border-cizgi bg-panel2 text-metin active:bg-panel"}`}>
+                  <span className="flex items-center gap-2 truncate">
+                    <Wifi size={15} className={cubuk(a.guc) === 0 ? "text-sonuk" : "text-soluk"} /> {a.ad}
+                  </span>
+                  {ssid === a.ad && <CheckCircle2 size={16} className="shrink-0 text-vurgu" />}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-md border border-uyari/30 bg-uyari/10 px-3 py-3 text-xs">
+              <p className="flex items-center gap-1.5 font-medium"><WifiOff size={14} /> Cihaz hiç 2.4 GHz ağ görmedi.</p>
+              <p className="mt-1 text-soluk">
+                Cihaz yalnızca <b>2.4 GHz</b> Wi-Fi'ye bağlanır (5 GHz'i görmez). Modeminizde 2.4 GHz'i açıp
+                "Yenile"ye basın ya da ağ adını elle girin.
+              </p>
+            </div>
+          )}
+
           <label className="block">
-            <span className="etiket flex items-center gap-1.5"><Wifi size={14} /> Wi-Fi adı (SSID)</span>
+            <span className="etiket">Wi-Fi adı (seçilen / elle)</span>
             <input value={ssid} onChange={(e) => setSsid(e.target.value)} disabled={asama === "calisiyor"}
-              autoComplete="off" className="girdi" placeholder="EvWifi" />
+              autoComplete="off" className="girdi" placeholder="Ağ seçin ya da yazın" />
           </label>
           <label className="block">
-            <span className="etiket">Wi-Fi şifresi</span>
+            <span className="etiket flex items-center gap-1.5"><Lock size={13} /> Wi-Fi şifresi</span>
             <input type="password" value={sifre} onChange={(e) => setSifre(e.target.value)} disabled={asama === "calisiyor"}
               autoComplete="off" className="girdi" placeholder="••••••••" />
           </label>
-          <p className="text-xs text-sonuk">
-            Cihaz yalnızca 2.4 GHz Wi-Fi'ye bağlanır (çoğu ev Wi-Fi'si uyumludur).
-          </p>
 
           {asama === "calisiyor" && (
             <div className="flex items-center gap-2 rounded-md border border-cizgi bg-panel2 px-3 py-2.5 text-sm">
@@ -128,8 +210,8 @@ export default function CihazEkle() {
           )}
 
           <button type="submit" disabled={asama === "calisiyor"} className="dugme-ana min-h-[44px] w-full">
-            {asama === "calisiyor" ? <Loader2 size={15} className="animate-spin" /> : <Bluetooth size={15} />}
-            {asama === "hata" ? "Tekrar dene" : "Bluetooth ile bağlan ve kur"}
+            {asama === "calisiyor" ? <Loader2 size={15} className="animate-spin" /> : <Wifi size={15} />}
+            {asama === "calisiyor" ? "Kuruluyor…" : "Bağlan ve kur"}
           </button>
         </form>
       )}
