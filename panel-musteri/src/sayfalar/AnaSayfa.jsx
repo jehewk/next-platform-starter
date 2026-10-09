@@ -4,6 +4,7 @@ import { RefreshCw, WifiOff, ChevronRight, Sun, BatteryCharging, ArrowDownToLine
 import { Iskelet, HataKutusu } from "../bilesenler/VeriDurumu";
 import { useGrafikRenkleri, Ipucu } from "../bilesenler/Grafik";
 import Halka from "../bilesenler/Halka";
+import Kapak from "../bilesenler/Kapak";
 import { useCanli } from "../api/useCanli";
 import { useVeri } from "../api/useVeri";
 import { sistemimiGetir, olcumYasiDk, SESSIZ_DAKIKA } from "../api/sistem";
@@ -28,6 +29,7 @@ export default function AnaSayfa() {
 
   return (
     <div className="space-y-4">
+      <Kapak />
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{ilkAd ? `Merhaba, ${ilkAd}` : "Sistemim"}</h1>
