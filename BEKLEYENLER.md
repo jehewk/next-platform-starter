@@ -22,10 +22,16 @@ uygulanacak) kararları tutar.
      **root erişim anahtarını konsoldan sil.**
 2. **Üretim anahtarı** — ✅ GEREK YOK. Sistem her cihaza benzersiz rastgele
    anahtar (`DEV-<guid>`, `cihaz-uret.ps1`) veriyor; paylaşılan sır yok.
-3. **E-posta (SES)** — Cognito varsayılanı ~50/gün; gerçek hacim için SES.
-   - Betik: `aws/ses-kur.ps1 -Gonderen no-reply@<alan>` (ya da `-Alan`).
-   - Kimlik doğrulanınca Cognito > Messaging > Email'den SES'e bağla (konsol).
-   - **Sandbox'tan çık** (production access, ~24 sa) — gerçek müşteriye şart.
+3. **E-posta (SES)** — ERTELENDİ: **domain alınınca** yapılacak.
+   - Şu an Cognito varsayılan e-postası kullanılıyor (~50/gün, çalışıyor).
+   - Tarayıcı şifre kaydı zaten açık (autocomplete doğru) → "şifremi unuttum"a
+     nadiren ihtiyaç olur, bu yüzden acil değil.
+   - Domain gelince: `aws/ses-kur.ps1 -Alan <alanadi>` (DKIM'li) → Cognito >
+     Messaging > Email'den bağla → **sandbox'tan çık** (production access).
+
+4. **Özel domain (alınınca)** — uygulamaları amplifyapp.com yerine kendi
+   alan adına taşı (ör. app.<alan>, panel.<alan>): Amplify custom domain +
+   DNS kayıtları. API için de istenirse özel alan adı.
 
 ## Seri üretim öncesi (saha/fabrika)
 - **Daly gerçek bataryada doğrulama** — `DALY_HATA_AYIKLA` ile ham çerçeveler.
