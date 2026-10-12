@@ -101,7 +101,7 @@ export default function AkuDetay() {
             <Olcum e="Ortalama" v={d.ortalama ?? "—"} b={d.ortalama != null ? "V" : null} />
             <Olcum e="Sıcaklık" v={d.sicaklik ?? "—"} b={d.sicaklik != null ? "°C" : null}
                    vurgu={d.sicaklik > 35 ? "text-uyari" : ""} />
-            <Olcum e="Garanti" v={g.gecerli ? Math.round(g.kalanGun / 30) : 0} b="ay"
+            <Olcum e="Garanti" v={g.gecerli ? Math.round(g.kalanGun / 30.4) : 0} b="ay"
                    vurgu={g.gecerli ? "" : "text-kritik"} />
           </div>
         </div>

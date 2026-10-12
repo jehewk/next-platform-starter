@@ -37,4 +37,19 @@ uygulanacak) kararları tutar.
 - **Daly gerçek bataryada doğrulama** — `DALY_HATA_AYIKLA` ile ham çerçeveler.
 - **5-10 cihazlık saha pilotu** (birkaç hafta) — kararlılık + motor kalibrasyonu.
 - **Fabrika basma istasyonu** — `cihaz-uret.ps1 -AyarlaraYaz` + `yukle.ps1`.
-- **iOS native app** (Capacitor) + App Store/Play yayını (Android Chrome hazır).
+- **iOS/Android native app** (Capacitor) — mağaza yayını + iPhone'da BLE.
+  - Gerekli: iOS için **Mac + Xcode + Apple Developer** ($99/yıl); Android için
+    Google Play hesabı (tek sefer $25). Build bu makinede yapılamaz.
+  - `panel-musteri/`'de: `npx cap add ios` / `npx cap add android`, sonra
+    `npm run build && npx cap sync`.
+  - **BLE izinleri (kurulumun çalışması için şart):**
+    - iOS `ios/App/App/Info.plist`:
+      `NSBluetoothAlwaysUsageDescription` = "Cihaz kurulumu için Bluetooth
+      gerekir." (gerekirse `NSBluetoothPeripheralUsageDescription` de).
+    - Android `android/app/src/main/AndroidManifest.xml`:
+      `BLUETOOTH_SCAN` (`neverForLocation`), `BLUETOOTH_CONNECT`,
+      ve Android ≤11 için `ACCESS_FINE_LOCATION`.
+  - Xcode'da arşivle → App Store Connect; Android `./gradlew bundleRelease` → Play.
+
+- **Garanti gösterimi** — ✅ "61 ay" yuvarlama düzeltildi (kalanGün/30.4 ile
+  tutarlı; 60 ay artık 60 görünür). Süre değeri hâlâ Dennis'ten bekleniyor.

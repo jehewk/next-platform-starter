@@ -80,7 +80,7 @@ export default function Garanti() {
                           </td>
                           <td className={`px-4 py-2.5 text-right font-mono text-xs ${
                             !g.gecerli ? "text-kritik" : az ? "text-uyari" : "text-soluk"}`}>
-                            {g.gecerli ? `${Math.round(g.kalanGun / 30)} ay` : "doldu"}
+                            {g.gecerli ? `${Math.round(g.kalanGun / 30.4)} ay` : "doldu"}
                           </td>
                         </tr>
                       );

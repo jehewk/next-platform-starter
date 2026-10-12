@@ -128,7 +128,7 @@ export function CihazKarti({ c, yol }) {
       <div className="mt-3 flex items-center justify-between border-t border-cizgi pt-2.5 text-xs">
         <span className="text-sonuk">garanti</span>
         <span className={g.gecerli ? "text-soluk" : "text-kritik"}>
-          {g.gecerli ? `${Math.round(g.kalanGun / 30)} ay kaldı` : "süresi doldu"}
+          {g.gecerli ? `${Math.round(g.kalanGun / 30.4)} ay kaldı` : "süresi doldu"}
         </span>
       </div>
     </Link>

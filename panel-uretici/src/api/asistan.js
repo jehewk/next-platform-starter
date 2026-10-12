@@ -167,7 +167,7 @@ async function yanitla(n, { cihazlar, musteriler, partiler, talepler, isler }) {
       t += `Durum: ${DURUM_ADI[c.durum] || c.durum}${c.saglik != null ? ` · sağlık ${c.saglik}` : ""}\n`;
       t += m ? `Müşteri: ${m.ad} (${m.ilce}, ${m.il})\n` : "Henüz kurulmamış.\n";
       t += `Üretim: ${tarihTR(c.uretim)} · parti ${c.parti}\n`;
-      t += `Garanti: ${g.gecerli ? `${Math.round(g.kalanGun / 30)} ay kaldı` : "süresi doldu"}\n`;
+      t += `Garanti: ${g.gecerli ? `${Math.round(g.kalanGun / 30.4)} ay kaldı` : "süresi doldu"}\n`;
       if (c.tahmin) t += `\nÖngörü: ${c.tahmin.bilesen} — ${sureMetni(c.tahmin.kalanSaat)} içinde. ${c.tahmin.gerekce}`;
       try {
         const kaynak = await kaynakAnalizi(n.kod);
@@ -264,7 +264,7 @@ async function yanitla(n, { cihazlar, musteriler, partiler, talepler, isler }) {
       let t = `Sahadaki ${sahada.length} cihazdan ${dolmus.length} tanesinin garantisi dolmuş.\n`;
       if (yakin.length) {
         t += `\nGarantisi en yakın dolacaklar:\n`;
-        yakin.slice(0, 5).forEach(({ c, g }) => { t += `· ${c.id} — ${Math.round(g.kalanGun / 30)} ay (${musteriBul(c.musteriId)?.ad})\n`; });
+        yakin.slice(0, 5).forEach(({ c, g }) => { t += `· ${c.id} — ${Math.round(g.kalanGun / 30.4)} ay (${musteriBul(c.musteriId)?.ad})\n`; });
       }
       const acik = talepler.filter((x) => x.durum === "inceleniyor");
       if (acik.length) t += `\n${acik.length} garanti talebi inceleme aşamasında.`;

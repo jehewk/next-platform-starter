@@ -83,7 +83,7 @@ export default function InverterDetay() {
           vurgu={(c.igbt ?? 0) > 65 ? "text-uyari" : "text-metin"} />
         <Olcum etiket="Soğutucu" deger={c.sogutucu ?? "—"} birim="°C"
           vurgu={(c.sogutucu ?? 0) > 50 ? "text-uyari" : "text-metin"} />
-        <Olcum etiket="Garanti" deger={g.gecerli ? Math.round(g.kalanGun / 30) : 0} birim="ay"
+        <Olcum etiket="Garanti" deger={g.gecerli ? Math.round(g.kalanGun / 30.4) : 0} birim="ay"
           vurgu={g.gecerli ? "text-metin" : "text-kritik"} />
       </OlcumSeridi>
 

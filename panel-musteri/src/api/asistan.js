@@ -113,7 +113,7 @@ async function yanitla(niyet, cihazlar, ayrinti = {}) {
       if (!g.bitis) return `· ${ad(c)} ${c.id} — bilgi yok`;
       const tarih = g.bitis.toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
       return g.gecerli
-        ? `· ${ad(c)} ${c.id} — ${tarih} tarihine kadar (${Math.round(g.kalanGun / 30)} ay)`
+        ? `· ${ad(c)} ${c.id} — ${tarih} tarihine kadar (${Math.round(g.kalanGun / 30.4)} ay)`
         : `· ${ad(c)} ${c.id} — garanti süresi ${tarih} tarihinde doldu`;
     }).join("\n") + "\n\nGaranti süresi üretim tarihinden itibaren başlar.";
   }

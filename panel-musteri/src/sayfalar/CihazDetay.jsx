@@ -77,7 +77,7 @@ export default function CihazDetay() {
 
       <section className="grid grid-cols-2 gap-3">
         <Bilgi ikon={ShieldCheck} etiket="Garanti"
-          deger={g.bitis ? (g.gecerli ? `${Math.round(g.kalanGun / 30)} ay kaldı` : "Süresi doldu") : "—"}
+          deger={g.bitis ? (g.gecerli ? `${Math.round(g.kalanGun / 30.4)} ay kaldı` : "Süresi doldu") : "—"}
           alt={g.bitis ? `${g.bitis.toLocaleDateString("tr-TR")} tarihine kadar` : null} />
         <Bilgi ikon={Clock} etiket="Kurulum" deger={tarihTR(c.kurulum)} alt={c.sonOlcum?.zaman ? `Son ölçüm ${onceMetni(c.sonOlcum.zaman)}` : null} />
       </section>

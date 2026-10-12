@@ -152,7 +152,7 @@ export default function CihazListesi({ tip }) {
                           <td><Rozet durum={durumRengi(c.durum)} cocuk={DURUM_ADI[c.durum] || c.durum} /></td>
                           <td className="text-right text-xs tabular-nums text-soluk">{deger(c)}</td>
                           <td className={`text-xs ${g.gecerli ? "text-soluk" : "text-kritik"}`}>
-                            {g.gecerli ? `${Math.round(g.kalanGun / 30)} ay` : "doldu"}
+                            {g.gecerli ? `${Math.round(g.kalanGun / 30.4)} ay` : "doldu"}
                           </td>
                           <td className="w-32">
                             {c.saglik == null ? <span className="text-xs text-sonuk">—</span> : (
