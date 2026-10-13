@@ -1,43 +1,32 @@
-# Next.js on Netlify Platform Starter
+# Dennis Energy — Akü/İnverter İzleme Platformu
 
-[Live Demo](https://nextjs-platform-starter.netlify.app/)
+LiFePO4 akü ve inverterler için uçtan uca izleme sistemi: sahadaki cihaz
+(ESP32 + Daly BMS) ölçümleri buluta gönderir, fizik motoru sağlık/arıza
+analizini yapar, müşteri ve üretici panelleri gösterir.
 
-A modern starter based on Next.js 16 (App Router), Tailwind, and [Netlify Core Primitives](https://docs.netlify.com/core/overview/#develop) (Edge Functions, Image CDN, Blob Store).
+## Yapı
+- **panel-uretici/** — Üretici paneli (React/Vite): cihaz filosu, garanti,
+  arıza kaynağı analizi, asistan.
+- **panel-musteri/** — Müşteri uygulaması (React/Vite, PWA + Capacitor):
+  izleme, BLE ile "Cihaz Ekle", harita, bildirim.
+- **backend/motor/** — Fizik motoru (saf Python): sağlık, yaşlanma, hücre
+  dengesizliği, kalan ömür, arıza kaynağı (üretim/kullanım/dış etken).
+- **aws/** — Dağıtım ve işletme betikleri (PowerShell): backend/Lambda kurulumu,
+  cihaz üretimi/atama, eşleştirme, izleme, güvenlik.
+  - `hepsini-kur.ps1` ana dağıtım; diğerleri tekil işler.
+- **firmware/** — ESP32 firmware'i (`esp32-saha/` gerçek donanım; `wokwi-*/`
+  simülasyon) + Daly BMS okuyucu, BLE provizyon, TLS.
+- **test/** — Backend ve fizik motoru testleri (`python3 test/backend/*.py`).
+- **codemagic.yaml** — Mac'siz iOS/Android bulut derleme (Capacitor).
 
-In this site, Netlify Core Primitives are used both implictly for running Next.js features (e.g. Route Handlers, image optimization via `next/image`, and more) and also explicitly by the user code.
-
-Implicit usage means you're using any Next.js functionality and everything "just works" when deployed - all the plumbing is done for you. Explicit usage is framework-agnostic and typically provides more features than what Next.js exposes.
-
-## Deploying to Netlify
-
-Click the button below to deploy this template to your Netlify account.
-
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/netlify-templates/next-platform-starter)
-
-## Developing Locally
-
-1. Clone this repository, then run `npm install` in its root directory.
-
-2. For the starter to have full functionality locally (e.g. edge functions, blob store), please ensure you have an up-to-date version of Netlify CLI. Run:
-
+## Akış
 ```
-npm install netlify-cli@latest -g
-```
-
-3. Link your local repository to the deployed Netlify site. This will ensure you're using the same runtime version for both local development and your deployed site.
-
-```
-netlify link
+ESP32 (Daly BMS, RS485) → WiFi/TLS → AWS (API Gateway + Lambda + DynamoDB)
+   → fizik motoru analizi → müşteri & üretici panelleri
+Kurulum: müşteri app "Cihaz Ekle" → BLE ile WiFi + eşleşme kodu
 ```
 
-4. Then, run the Next.js development server via Netlify CLI:
-
-```
-netlify dev
-```
-
-If your browser doesn't navigate to the site automatically, visit [localhost:8888](http://localhost:8888).
-
-## Resources
-
-- Check out the [Next.js on Netlify docs](https://docs.netlify.com/frameworks/next-js/overview/)
+## Belgeler
+- **YAYIN.md** — dağıtım/yayın notları.
+- **BEKLEYENLER.md** — netleşmeyi bekleyen kararlar ve üretim öncesi liste.
+- **backend/motor/KALIBRASYON.md** — fizik motoru kalibrasyon takibi.
