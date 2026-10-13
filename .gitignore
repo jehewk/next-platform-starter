@@ -51,3 +51,22 @@ aws/kurulum-durumu.json
 
 # Python önbelleği
 __pycache__/
+
+# Kaldırılan Next.js/Netlify başlangıç şablonu (cloud clone'da artıklar — yok say)
+/app/
+/components/
+/data/
+/netlify/
+/styles/
+/public/
+/next.config.js
+/middleware.js
+/netlify.toml
+/utils.js
+/package.json
+/package-lock.json
+/jsconfig.json
+/renovate.json
+/postcss.config.js
+/.eslintrc.json
+/.prettierrc
