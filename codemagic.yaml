@@ -1,0 +1,62 @@
+# Dennis Energy müşteri uygulaması — iOS (ve Android) bulut derleme.
+# Mac GEREKMEZ: build Codemagic'in Mac'inde çalışır. Windows'tan GitHub'a push
+# edip Codemagic'te "Start build" dersin.
+#
+# ÖN KOŞUL (Codemagic arayüzünde bir kez, yaml'a sır yazılmaz):
+#   1) Apple Developer hesabı ($99/yıl) + App Store Connect'te uygulama kaydı
+#      (bundle id: com.dennisenerji.musteri).
+#   2) Codemagic > Teams/Integrations > App Store Connect: API anahtarı bağla
+#      (ad: "dennis_appstore"). Team > Code signing identities isteğe bağlı.
+#   3) Android için (opsiyonel): Google Play service account + keystore bağla.
+
+workflows:
+  ios-musteri:
+    name: Dennis Musteri iOS
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: dennis_appstore      # Codemagic UI'da bağlanan entegrasyon adı
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.dennisenerji.musteri
+      vars:
+        BUNDLE_ID: "com.dennisenerji.musteri"
+        XCODE_WORKSPACE: "panel-musteri/ios/App/App.xcworkspace"
+        XCODE_SCHEME: "App"
+      node: 20
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Web uygulamasini kur ve derle
+        script: |
+          cd panel-musteri
+          npm ci
+          npm run build
+      - name: iOS platformunu ekle / senkronize et
+        script: |
+          cd panel-musteri
+          [ -d ios ] || npx cap add ios
+          npx cap sync ios
+      - name: BLE izinlerini Info.plist'e ekle (cihaz kurulumu icin sart)
+        script: |
+          PLIST="panel-musteri/ios/App/App/Info.plist"
+          /usr/libexec/PlistBuddy -c "Add :NSBluetoothAlwaysUsageDescription string 'Akunuzu kurmak icin Bluetooth gerekir.'" "$PLIST" 2>/dev/null || \
+          /usr/libexec/PlistBuddy -c "Set :NSBluetoothAlwaysUsageDescription 'Akunuzu kurmak icin Bluetooth gerekir.'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :NSBluetoothPeripheralUsageDescription string 'Akunuzu kurmak icin Bluetooth gerekir.'" "$PLIST" 2>/dev/null || true
+      - name: Imzalama profillerini uygula
+        script: |
+          xcode-project use-profiles
+      - name: IPA uret
+        script: |
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true          # once TestFlight; hazir olunca App Store'a submit
+        # submit_to_app_store: false

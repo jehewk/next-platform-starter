@@ -50,6 +50,12 @@ uygulanacak) kararları tutar.
       `BLUETOOTH_SCAN` (`neverForLocation`), `BLUETOOTH_CONNECT`,
       ve Android ≤11 için `ACCESS_FINE_LOCATION`.
   - Xcode'da arşivle → App Store Connect; Android `./gradlew bundleRelease` → Play.
+  - **Mac'siz yol (önerilen): Codemagic.** `codemagic.yaml` repo kökünde hazır.
+    Adımlar: (1) Apple Developer hesabı aç ($99/yıl), App Store Connect'te
+    `com.dennisenerji.musteri` uygulamasını kaydet. (2) codemagic.io → GitHub
+    repo'yu bağla. (3) App Store Connect API anahtarını Codemagic'e bağla
+    (entegrasyon adı: `dennis_appstore`). (4) "Start build" → IPA → TestFlight.
+    BLE izinleri yaml'da otomatik ekleniyor. Mac gerekmez.
 
 - **Garanti gösterimi** — ✅ "61 ay" yuvarlama düzeltildi (kalanGün/30.4 ile
   tutarlı; 60 ay artık 60 görünür). Süre değeri hâlâ Dennis'ten bekleniyor.
