@@ -34,6 +34,8 @@ uygulanacak) kararları tutar.
    DNS kayıtları. API için de istenirse özel alan adı.
 
 ## Seri üretim öncesi (saha/fabrika)
+> Zaman notu: Daly gerçek veri + fabrika testi ~20 gün sonra planlı (2026-10-13 itibarıyla).
+> O güne kadar donanım adımları beklemede; yazılım/platform hazır.
 - **Daly gerçek bataryada doğrulama** — `DALY_HATA_AYIKLA` ile ham çerçeveler.
 - **5-10 cihazlık saha pilotu** (birkaç hafta) — kararlılık + motor kalibrasyonu.
 - **Fabrika basma istasyonu** — `cihaz-uret.ps1 -AyarlaraYaz` + `yukle.ps1`.
