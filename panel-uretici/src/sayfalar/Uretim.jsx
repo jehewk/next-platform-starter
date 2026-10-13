@@ -145,7 +145,8 @@ export default function Uretim() {
               <div className="mb-2.5 font-mono text-xs text-sonuk">03</div>
               <h3 className="text-sm font-medium">Sahada eşleştirme</h3>
               <p className="mt-1.5 text-xs leading-relaxed text-soluk">
-                Cihaz açılınca Bluetooth yayını yapar (Dennis_XXXX). Kurulumcu
+                Cihaz açılınca Bluetooth yayını yapar (ad: "Dennis" + cihaz kimliği,
+                ör. Dennis AKU-DENNIS-…). Kurulumcu
                 uygulamadan bağlanır, Wi-Fi bilgisi ve eşleşme kodunu gönderir;
                 cihaz buluta bağlanıp müşteriye tanımlanır.
               </p>
