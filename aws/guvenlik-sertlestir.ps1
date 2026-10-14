@@ -77,10 +77,27 @@ if ($acl) {
 
 $stageArn = "arn:aws:apigateway:${Bolge}::/restapis/$apiId/stages/$stage"
 Adim "WAF -> API stage'ine baglaniyor"
-if (Dene wafv2 associate-web-acl --web-acl-arn $aclArn --resource-arn $stageArn --region $Bolge) {
-  Tamam "baglandi"
+# Yeni olusturulan WebACL AWS'de yayilana kadar associate reddedilebilir;
+# once bagli mi diye bak, degilse kisa bekleme ile birkac kez dene.
+$zatenBagli = $false
+$mevcutBag = (Dene wafv2 get-web-acl-for-resource --resource-arn $stageArn --region $Bolge)
+if ($mevcutBag -and $mevcutBag.WebACL -and $mevcutBag.WebACL.ARN -eq $aclArn) { $zatenBagli = $true }
+
+if ($zatenBagli) {
+  Tamam "zaten bagli"
 } else {
-  Uyari "Zaten bagli ya da baglanamadi (ACL zaten bu stage'e bagli olabilir)."
+  $bagliOldu = $false
+  foreach ($bekle in 0, 3, 6, 10) {
+    if ($bekle -gt 0) { Start-Sleep -Seconds $bekle }
+    if (Dene wafv2 associate-web-acl --web-acl-arn $aclArn --resource-arn $stageArn --region $Bolge) {
+      $bagliOldu = $true; break
+    }
+  }
+  if ($bagliOldu) {
+    Tamam "baglandi"
+  } else {
+    Uyari "Baglanamadi. Elle: wafv2 associate-web-acl --web-acl-arn $aclArn --resource-arn $stageArn --region $Bolge"
+  }
 }
 
 # ── 3) Lambda reserved concurrency (best-effort) ─────────────────────────
