@@ -39,22 +39,35 @@ python3 test_backend.py    # 33 kontrol
 > Not: Üretim API'sine buradan (CI/bulut) otomatik DoS YAPILMADI — bilerek.
 > Prod müşteri-gören sistem; yükü sen, küçük adımlarla, bilerek ver.
 
-## Canlı sertleştirme — yapılacaklar (öneri)
-- **API Gateway throttle** — hesap/stage düzeyinde istek/sn ve burst limiti
-  (varsayılan 10k/sn çok yüksek; düşür). Uç başına da kota koyulabilir.
-- **AWS WAF** — API Gateway'e rate-based rule (ör. IP başına 5 dk'da N istek)
-  + yaygın kötü desen kuralları. DoS/abuse ilk savunma.
-- **Lambda reserved concurrency** — ani yükte hesabı tüketmesin diye ana
-  Lambda'ya makul eşzamanlılık sınırı.
-- **Cognito** — giriş deneme hızı Cognito'da sınırlı; kaptcha zaten var.
-- **DynamoDB** — PAY_PER_REQUEST (otomatik ölçek) kullanılıyor; iyi.
-- **CloudWatch alarm** — `aws/izleme-kur.ps1` ile hata/throttle alarmı (kuruldu).
-- **Gizli yönetimi** — IAM kullanıcısı yapıldı; lansmandan önce root anahtarı sil
+## Canlı sertleştirme — DURUM
+Tek betikle uygulanır: **`aws/guvenlik-sertlestir.ps1`** (idempotent).
+- **API Gateway throttle** ✅ betikte — stage default rate/sn + burst
+  (varsayılan 10k/sn yerine makul sınır).
+- **AWS WAF (REGIONAL)** ✅ betikte — IP başına rate-based kural + API
+  stage'ine bağlama.
+- **Lambda reserved concurrency** ✅ betikte (best-effort; hesap limiti
+  elverirse).
+- **Güvenlik başlıkları (CSP/HSTS/X-Frame/Referrer/Permissions)** ✅
+  `panel-*/public/customHttp.yml` → Amplify yayınında etkin. Web yeniden
+  yayınlanınca (`hepsini-kur.ps1 -Atla backend,hesap,lambda`) devreye girer.
+- **Cognito** — giriş hızı sınırlı + kaptcha (hazır).
+- **DynamoDB** — PAY_PER_REQUEST otomatik ölçek (hazır).
+- **CloudWatch alarm** — `aws/izleme-kur.ps1` (hazır).
+- **IAM** — yönetici kullanıcı yapıldı; root anahtarı silme lansman öncesi
   (BEKLEYENLER.md).
+
+Çalıştırma:
+```
+cd aws
+.\guvenlik-sertlestir.ps1
+.\hepsini-kur.ps1 -Atla backend,hesap,lambda   # güvenlik başlıklarını yayınla
+```
 
 ## Dashboard (ön yüz)
 - Statik React (Amplify, HTTPS). XSS yüzeyi düşük (React varsayılan kaçışlı;
   `dangerouslySetInnerHTML` kullanılmıyor).
 - Tüm hassas işlem backend'de yetki kontrollü; ön yüz yalnız kendi verisini
   görür (izolasyon testlerle doğrulandı).
-- Öneri: Amplify'da güvenlik başlıkları (CSP, X-Frame-Options, HSTS) eklenebilir.
+- Güvenlik başlıkları `customHttp.yml` ile eklendi (CSP/HSTS/X-Frame/...).
+  CSP bir şeyi kırarsa connect-src/img-src genişletilir ya da CSP satırı
+  geçici kaldırılır (dosyada not var).
