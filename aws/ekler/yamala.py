@@ -815,10 +815,12 @@ def _de_kurulum_basla(event, body):
     """Musteri 'Cihaz Ekle' der: 8 haneli eslesme kodu uret, sakla, don.
     Kod kodun sahibi musteriye baglidir; cihaz bu kodla kendini o musteriye baglar."""
     import random as _r, time as _t
+    # GUVENLIK: musteri_id YALNIZCA oturum kimliginden alinir; istemci govdesine
+    # guvenilmez (aksi halde musteri baskasinin adina kod uretebilir - IDOR).
     k = _de_kullanici(event)
-    mid = (k or {}).get('musteri_id') or str(body.get('musteri_id', '')).strip()
+    mid = str((k or {}).get('musteri_id', '')).strip()
     if not mid:
-        return 400, {'hata': 'musteri_id gerekli'}
+        return 400, {'hata': 'Oturum musteri kimligi cozulemedi'}
     abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'   # karisabilen 0/O/1/I/l yok
     kod = ''.join(_r.choice(abc) for _ in range(8))
     gecerlilik = 600  # sn (10 dk)
