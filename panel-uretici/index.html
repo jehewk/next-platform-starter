@@ -20,16 +20,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <script>
-      // Tema, sayfa çizilmeden önce uygulanır; açık temada koyu yanıp sönme olmaz.
-      try {
-        var a = JSON.parse(localStorage.getItem("de_ayarlar") || "{}");
-        var t = a.tema || "koyu";
-        if (t === "sistem") t = matchMedia("(prefers-color-scheme: light)").matches ? "acik" : "koyu";
-        document.documentElement.dataset.tema = t;
-        document.documentElement.dataset.yogunluk = a.yogunluk || "rahat";
-      } catch (e) {}
-    </script>
+    <script src="/tema-onyukle.js"></script>
   </head>
   <body>
     <div id="root"></div>
