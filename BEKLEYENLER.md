@@ -61,3 +61,15 @@ uygulanacak) kararları tutar.
 
 - **Garanti gösterimi** — ✅ "61 ay" yuvarlama düzeltildi (kalanGün/30.4 ile
   tutarlı; 60 ay artık 60 görünür). Süre değeri hâlâ Dennis'ten bekleniyor.
+
+- **SoC tutarlılık kontrolü (LiFePO4)** — ✅ motora eklendi
+  (`fizik.soc_tutarlilik`): dinlenmede + eğri dizlerinde BMS SoC'sinin
+  sürüklenmesini yakalar (aşırı deşarj riski), düz bölgede "doğrulanamaz" der.
+  `aku_degerlendir` çıktısında ayrı `soc_kontrol` alanı (sağlık skorunu
+  etkilemez). Testler: `test_fizik.py` §10 (8 senaryo).
+  - ⏳ **Canlıya gitmesi için tam lambda deploy gerekir** — `lambda-yukle.ps1`
+    yalnız `lambda_function.py` değiştirir, `motor/` paketini yenilemez.
+    Gerçek Daly verisi henüz akmadığı için acil değil; fabrika testinden önce
+    motoru yenileyen bir deploy yapılmalı.
+  - ⏳ (opsiyonel) Panelde `soc_kontrol.durum == surukleme_*` ise
+    "BMS kalibrasyonu: tam şarj yapın" rozeti gösterilebilir.

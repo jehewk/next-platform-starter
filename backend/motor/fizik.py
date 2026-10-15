@@ -83,6 +83,108 @@ def soh_duzelt(olculen_soh, sicaklik_c):
     }
 
 
+# ══════════════════ SoC TUTARLILIĞI (LiFePO4) ══════════════════
+#
+# LiFePO4 dinlenme gerilim eğrisi ~%20-90 arası düzdür; bu bölgede gerilimden
+# SoC doğrulanamaz. Ama eğrinin "diz" bölgelerinde gerilim bilgilendiricidir:
+#   - en düşük hücre ~3.05 V altı (dinlenmede) → paket neredeyse boş
+#   - en yüksek hücre ~3.38 V üstü (dinlenmede) → paket neredeyse dolu
+# BMS'in coulomb-sayımı SoC'si zamanla sürüklenir ve ancak tam şarjda sıfırlanır.
+# Bu kontrol yalnız DİNLENMEDE (düşük akım) ve DİZLERDE karar verir; düz bölgede
+# ya da yük altında dürüstçe "dogrulanamaz" döner (sahte alarm üretmez).
+
+SOC_BOS_ESIK_MV   = 3050.0   # bu altı (dinlenme, en dusuk hucre) ~ bos
+SOC_DOLU_ESIK_MV  = 3380.0   # bu ustu (dinlenme, en yuksek hucre) ~ dolu
+SOC_DINLENME_A    = 3.0      # |akim| bu altindaysa dinlenme kabul edilir
+SOC_DINLENME_C    = 0.03     # kapasite biliniyorsa C-orani esigi (C/33)
+
+
+def soc_tutarlilik(soc, hucreler_mv, akim_a=None, kapasite_ah=None):
+    """BMS'in bildirdigi SoC, hucre gerilimleriyle tutarli mi?
+
+    Yalniz dinlenmede (dusuk akim) ve LiFePO4 egrisinin diz bolgelerinde
+    karar verir. Duz bolgede/yuk altinda 'dogrulanamaz' doner. Suruklenme
+    tespit edilirse tam sarjla kalibrasyon onerir.
+    """
+    if soc is None or not hucreler_mv or len(hucreler_mv) < 1:
+        return None
+
+    soc = float(soc)
+    en_dusuk = min(hucreler_mv)
+    en_yuksek = max(hucreler_mv)
+
+    # Dinlenme mi? Yuk altinda IR dusumu gerilimi bozar; karar verilemez.
+    esik_a = SOC_DINLENME_A
+    if kapasite_ah:
+        esik_a = max(SOC_DINLENME_A, SOC_DINLENME_C * float(kapasite_ah))
+    dinlenme = akim_a is None or abs(float(akim_a)) <= esik_a
+
+    temel = {
+        "mekanizma":    "soc_tutarlilik",
+        "soc":          round(soc, 1),
+        "min_hucre_mv": round(float(en_dusuk), 0),
+        "max_hucre_mv": round(float(en_yuksek), 0),
+        "dinlenme":     bool(dinlenme),
+    }
+
+    if not dinlenme:
+        temel.update({
+            "durum": "dogrulanamaz", "seviye": "normal",
+            "not": (f"Yuk altinda ({abs(float(akim_a)):.0f} A); gerilim IR "
+                    "dusumuyle bozuk. SoC dinlenmede dogrulanabilir."),
+        })
+        return temel
+
+    # Boş diz: en düşük hücre alt dizde ama SoC yüksek → tehlikeli sürüklenme
+    if en_dusuk <= SOC_BOS_ESIK_MV:
+        if soc > 30.0:
+            seviye = "kritik" if soc > 50.0 else "uyari"
+            temel.update({
+                "durum": "surukleme_yuksek", "seviye": seviye,
+                "oneri": ("Tam sarj (absorbsiyon dahil) yapip BMS'i kalibre "
+                          "edin; SoC tam sarjda %100'e sifirlanir."),
+                "not": (f"En dusuk hucre {en_dusuk:.0f} mV (dinlenme) paketin "
+                        f"neredeyse bos oldugunu gosteriyor, ama SoC %{soc:.0f} "
+                        "diyor. BMS SoC'si yuksege suruklenmis - asiri desarj "
+                        "riski."),
+            })
+            return temel
+        temel.update({
+            "durum": "tutarli", "seviye": "normal",
+            "not": f"Paket bosa yakin (en dusuk hucre {en_dusuk:.0f} mV), "
+                   f"SoC %{soc:.0f} ile tutarli.",
+        })
+        return temel
+
+    # Dolu diz: en yüksek hücre üst dizde ama SoC düşük → düşüğe sürüklenme
+    if en_yuksek >= SOC_DOLU_ESIK_MV:
+        if soc < 70.0:
+            temel.update({
+                "durum": "surukleme_dusuk", "seviye": "uyari",
+                "oneri": ("Tam sarj sonrasi SoC %100'e oturmuyorsa BMS "
+                          "kalibrasyonu gerekir."),
+                "not": (f"En yuksek hucre {en_yuksek:.0f} mV (dinlenme) paketin "
+                        f"neredeyse dolu oldugunu gosteriyor, ama SoC %{soc:.0f} "
+                        "diyor. SoC dusuge suruklenmis - kapasite oldugundan az "
+                        "gorunur."),
+            })
+            return temel
+        temel.update({
+            "durum": "tutarli", "seviye": "normal",
+            "not": f"Paket doluya yakin (en yuksek hucre {en_yuksek:.0f} mV), "
+                   f"SoC %{soc:.0f} ile tutarli.",
+        })
+        return temel
+
+    # Düz bölge: gerilimden SoC doğrulanamaz — dürüstçe söyle
+    temel.update({
+        "durum": "dogrulanamaz", "seviye": "normal",
+        "not": (f"Hucreler duz bolgede ({en_dusuk:.0f}-{en_yuksek:.0f} mV); "
+                "LiFePO4 egrisi burada yatik, gerilimden SoC dogrulanamaz."),
+    })
+    return temel
+
+
 # ══════════════════ AKÜ BOZULMA ══════════════════
 
 def aku_hucre_dengesizligi(hucreler_mv, temel_fark_mv=None, akim_a=None):
@@ -864,6 +966,14 @@ def aku_degerlendir(olcum):
         bulgular.append(r)
 
     sonuc = _birlestir(bulgular, "aku")
+
+    # SoC-gerilim tutarliligi: saglik skoruna karismaz (hucre bozulmasi degil,
+    # BMS kalibrasyon/guvenlik uyarisi), ayri alanda tasinir.
+    sc = soc_tutarlilik(olcum.get("soc"), olcum.get("hucreler"),
+                        akim_a=olcum.get("akim"),
+                        kapasite_ah=olcum.get("kapasite_ah"))
+    if sc:
+        sonuc["soc_kontrol"] = sc
 
     sicakliklar = olcum.get("sicakliklar") or []
     olcum_sic = (float(sum(sicakliklar)) / len(sicakliklar) if sicakliklar

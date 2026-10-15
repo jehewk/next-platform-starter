@@ -403,6 +403,126 @@ def _():
         dogru(alan in sonuc, f"sonuçta {alan} alanı olmalı")
 
 
+# ══════════════════ 10. SoC TUTARLILIĞI (LiFePO4) ══════════════════
+
+@created("SoC: boşa yakın hücre ama SoC %85 → yüksek sürüklenme (tehlikeli)")
+def _():
+    # en düşük hücre 3.00 V (boş) ama BMS %85 diyor, dinlenmede
+    sc = fizik.soc_tutarlilik(85.0, [3000, 3010, 3005, 3008], akim_a=1.0)
+    esit(sc["durum"], "surukleme_yuksek", "boş hücre + yüksek SoC sürüklenme")
+    esit(sc["seviye"], "kritik", "SoC %50 üstü + boş → kritik (aşırı deşarj)")
+    dogru("kalibre" in sc["oneri"].lower(), "tam şarj kalibrasyon önerisi gelmeli")
+
+
+@created("SoC: boş hücre + düşük SoC → tutarlı")
+def _():
+    sc = fizik.soc_tutarlilik(8.0, [3010, 3005, 3000, 3008], akim_a=0.5)
+    esit(sc["durum"], "tutarli", "boş hücre + düşük SoC tutarlı olmalı")
+    esit(sc["seviye"], "normal")
+
+
+@created("SoC: dolu hücre ama SoC %40 → düşüğe sürüklenme (kapasite az görünür)")
+def _():
+    sc = fizik.soc_tutarlilik(40.0, [3400, 3395, 3410, 3398], akim_a=1.0)
+    esit(sc["durum"], "surukleme_dusuk", "dolu hücre + düşük SoC sürüklenme")
+    esit(sc["seviye"], "uyari")
+
+
+@created("SoC: düz bölgede gerilimden doğrulanamaz (dürüst)")
+def _():
+    # 3.28 V civarı → LiFePO4 düz bandı; SoC ne derse desin doğrulanamaz
+    sc = fizik.soc_tutarlilik(55.0, [3280, 3282, 3279, 3281], akim_a=0.5)
+    esit(sc["durum"], "dogrulanamaz", "düz bölgede karar verilemez")
+    esit(sc["seviye"], "normal", "doğrulanamaz asla alarm üretmez")
+
+
+@created("SoC: yük altında doğrulanamaz (IR düşümü gerilimi bozar)")
+def _():
+    # boşa yakın hücre ama 60 A deşarj → yük altında, karar yok
+    sc = fizik.soc_tutarlilik(85.0, [3000, 3010, 3005, 3008], akim_a=-60.0)
+    esit(sc["durum"], "dogrulanamaz", "yük altında doğrulama yapılmamalı")
+    dogru(not sc["dinlenme"], "60 A dinlenme sayılmamalı")
+
+
+@created("SoC: C-oranı eşiği — büyük akü düşük akımda hâlâ dinlenmede sayılır")
+def _():
+    # 280 Ah akü, 6 A akım → C/47, dinlenme (sabit 3 A eşiği yetmezdi)
+    sc = fizik.soc_tutarlilik(85.0, [3000, 3010, 3005], akim_a=6.0,
+                              kapasite_ah=280)
+    dogru(sc["dinlenme"], "280 Ah'te 6 A dinlenme sayılmalı (C/47)")
+    esit(sc["durum"], "surukleme_yuksek")
+
+
+@created("SoC: değerlendirmeye ayrı alan olarak girer, sağlık skorunu bozmaz")
+def _():
+    s = fizik.aku_degerlendir({
+        "hucreler": [3300, 3301, 3299, 3302],   # sağlıklı, düz bölge
+        "sicakliklar": [32, 33, 32],
+        "temel_fark_mv": 3.0,
+        "soc": 60.0, "akim": 0.0,
+    })
+    esit(s["seviye"], "normal", "SoC kontrolü sağlık seviyesini değiştirmemeli")
+    dogru("soc_kontrol" in s, "soc_kontrol alanı sonuçta olmalı")
+    esit(s["soc_kontrol"]["durum"], "dogrulanamaz")
+
+
+@created("SoC: veri eksikse (soc yok) güvenle atlanır")
+def _():
+    dogru(fizik.soc_tutarlilik(None, [3300, 3301]) is None, "soc yoksa None")
+    dogru(fizik.soc_tutarlilik(50.0, []) is None, "hücre yoksa None")
+
+
+# ══════════════════ 11. SINIR DURUMLARI (güçlendirme) ══════════════════
+
+@created("SoH düzeltmesi 105 üstüne çıkamaz (üst sınır)")
+def _():
+    # çok soğukta ölçülen yüksek SOH, düzeltme ile 105'i aşmamalı
+    d = fizik.soh_duzelt(102.0, -15.0)
+    dogru(d["duzeltilmis_soh"] <= 105.0, "düzeltilmiş SOH 105 ile sınırlı")
+
+
+@created("çevrim yorulması: ömrün %95 üstü kritik")
+def _():
+    c = fizik.aku_cevrim_yorulmasi(2900, beklenen_omur=3000)
+    esit(c["seviye"], "kritik", "%96 ömür kritik olmalı")
+    dogru(c["beklenen_kapasite"] < 85, "yüksek çevrimde kapasite düşük")
+
+
+@created("erken sapma sınırı: 180 gün içi üretim, sonrası değil")
+def _():
+    deg = {"bulgular": [{"mekanizma": "kopru_dengesizligi", "seviye": "kritik"}]}
+    icinde = kaynak.inverter_erken_sapma(deg, calisma_gun=180)
+    disinda = kaynak.inverter_erken_sapma(deg, calisma_gun=181)
+    dogru(icinde is not None, "180. gün hâlâ erken dönem (üretim işareti)")
+    dogru(disinda is None, "181. gün erken dönem dışı")
+
+
+@created("tek sınıf net kanıt → yüksek güven (çelişki yok)")
+def _():
+    # yalnız soğuk şarj (kullanım), başka sınıfta işaret yok → güven yüksek
+    olcum = {
+        "hucreler": [3310, 3300, 3295, 3285],
+        "sicakliklar": [-10, -9, -10], "sicaklik": -10,
+        "akim": 25, "sarjda": True, "kapasite_ah": 100,
+        "temel_fark_mv": 8.0,
+    }
+    sonuc = kaynak.kaynak_analizi(olcum, calisma_gun=400)
+    esit(sonuc["sinif"], "kullanim")
+    dogru(sonuc["guven"] >= 0.7, f"tek sınıf net kanıtta güven yüksek olmalı, gelen {sonuc['guven']}")
+
+
+@created("eşzamanlı çok bileşen kritik termal → dış etken (yıldırım/ani olay)")
+def _():
+    olcum = {
+        "igbt": 95, "sogutucu": 60,
+        "thd": 4.0, "dc_gerilim": 400, "nominal_dc": 400,
+        "kopru_sicakliklari": [60, 62, 92], "temel_kopru_yayilim": 2.0,
+    }
+    deg = fizik.inverter_degerlendir(olcum)
+    sonuc = kaynak.kaynak_analizi(olcum, degerlendirme=deg, calisma_gun=500)
+    esit(sonuc["sinif"], "dis_etken", "çok bileşen eşzamanlı kritik → dış etken")
+
+
 # ══════════════════ 9. YAMA J: _birlestir canlıya taşınır ══════════════════
 
 # yamala.py'yi içe aktar (fizik düzeltmesini canlı Lambda'ya uygulayan yama)
