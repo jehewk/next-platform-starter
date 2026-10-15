@@ -38,7 +38,7 @@ GARANTI_YORUM = {
 def sifir_alti_sarj(olcum):
     """0 °C altında yüksek akımla şarj → lityum kaplama (kullanım hatası)."""
     sic = olcum.get("sicaklik")
-    sicakliklar = olcum.get("sicakliklar") or []
+    sicakliklar = fizik.gecerli_sicakliklar(olcum.get("sicakliklar"))
     if sic is None and sicakliklar:
         sic = min(sicakliklar)
     akim = olcum.get("akim")

@@ -83,6 +83,21 @@ def soh_duzelt(olculen_soh, sicaklik_c):
     }
 
 
+# ══════════════════ KOPUK SENSÖR AYIKLAMA ══════════════════
+# Daly, bağlı olmayan sıcaklık sensörünü -40 °C (ham 0) olarak bildirir; bu
+# gerçek bir ölçüm değil "sensör yok" demektir. Fizik bunu -40 °C soğuk saymamalı
+# (yoksa kopuk sensör sahte "kritik termal" alarmı üretir — dogruluk_zor.py bulgusu).
+SENSOR_KOPUK_C = -40.0
+
+
+def gecerli_sicakliklar(liste):
+    """Kopuk-sensör nöbetçisini (-40 °C) ve None değerleri ayıklar."""
+    if not liste:
+        return []
+    return [float(s) for s in liste
+            if s is not None and float(s) > SENSOR_KOPUK_C + 0.5]
+
+
 # ══════════════════ SoC TUTARLILIĞI (LiFePO4) ══════════════════
 # DE_SOC_KONTROL — bu işaret yamala.py N'in çift enjeksiyonu önlemesini sağlar.
 #
@@ -948,7 +963,7 @@ def aku_degerlendir(olcum):
         akim_a=olcum.get("akim"))
     if h: bulgular.append(h)
 
-    sicakliklar = olcum.get("sicakliklar") or []
+    sicakliklar = gecerli_sicakliklar(olcum.get("sicakliklar"))
     if sicakliklar:
         akim = olcum.get("akim")
         kapasite = olcum.get("kapasite_ah")
@@ -976,7 +991,7 @@ def aku_degerlendir(olcum):
     if sc:
         sonuc["soc_kontrol"] = sc
 
-    sicakliklar = olcum.get("sicakliklar") or []
+    sicakliklar = gecerli_sicakliklar(olcum.get("sicakliklar"))
     olcum_sic = (float(sum(sicakliklar)) / len(sicakliklar) if sicakliklar
                  else olcum.get("sicaklik"))
     ham_soh = olcum.get("soh") or olcum.get("olculen_soh")
