@@ -76,3 +76,13 @@ uygulanacak) kararları tutar.
     çalıştırmak yeterli.
   - ⏳ (opsiyonel) Panelde `soc_kontrol.durum == surukleme_*` ise
     "BMS kalibrasyonu: tam şarj yapın" rozeti gösterilebilir.
+
+- **Kopuk sensör sahte alarmı** — ✅ düzeltildi + canlıya deploy hazır.
+  Daly kopuk sıcaklık sensörünü -40 °C bildiriyor; motor bunu gerçek soğuk
+  sanıp "kritik termal" sahte alarmı veriyordu (dogruluk_zor.py buldu).
+  `fizik.gecerli_sicakliklar` -40 nöbetçisini ayıklar; `yamala.py` O yaması
+  gömülü `aku_degerlendir` girişine aynı ayıklamayı enjekte eder (idempotent,
+  try/except'li). Aynı komutla canlıya gider:
+  `cd C:\dennis\aws; git pull; .\hepsini-kur.ps1 -Atla backend,hesap,web`
+  (SoC yaması N + sensör yaması O birlikte uygulanır, yedekli + sağlık
+  kontrollü). Akü yolu canlıda aktif olduğu için fabrika öncesi çalıştırılmalı.

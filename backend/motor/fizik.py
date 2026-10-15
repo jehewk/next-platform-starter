@@ -88,6 +88,7 @@ def soh_duzelt(olculen_soh, sicaklik_c):
 # gerçek bir ölçüm değil "sensör yok" demektir. Fizik bunu -40 °C soğuk saymamalı
 # (yoksa kopuk sensör sahte "kritik termal" alarmı üretir — dogruluk_zor.py bulgusu).
 SENSOR_KOPUK_C = -40.0
+# DE_SENSOR_AYIKLA — bu işaret yamala.py O'nun çift enjeksiyonu önlemesini sağlar.
 
 
 def gecerli_sicakliklar(liste):

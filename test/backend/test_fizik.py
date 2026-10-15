@@ -673,6 +673,61 @@ def _():
     dogru(not uygulandi, "depo kopyası zaten DE_SOC_KONTROL işareti taşımalı")
 
 
+# ══════════════════ 13. YAMA O: kopuk sensör ayıklama canlıya taşınır ══════════
+
+_SENSOR_STUB = '''
+def aku_degerlendir(olcum):
+    s = olcum.get("sicakliklar") or []
+    if s and min(s) <= 0:
+        return {"seviye": "kritik", "bulgular": []}
+    return {"seviye": "normal", "bulgular": []}
+
+
+def lambda_handler(event, context):
+    return None
+'''
+
+
+@created("yama O: kopuk sensör (-40) girişte ayıklanır, sahte alarm gider")
+def _():
+    yeni, uygulandi = yamala.yama_sensor(_SENSOR_STUB)
+    dogru(uygulandi, "yama uygulanmalı")
+    compile(yeni, "test", "exec")
+    ns = {}
+    exec(yeni, ns)
+    # Tüm sensörler kopuk → ayıklanır → normal (sahte kritik yok)
+    esit(ns["aku_degerlendir"]({"sicakliklar": [-40, -40, -40]})["seviye"],
+         "normal", "kopuk sensör sahte alarm vermemeli")
+    # Gerçek soğuk korunur
+    esit(ns["aku_degerlendir"]({"sicakliklar": [-5, -6]})["seviye"],
+         "kritik", "gerçek soğuk hâlâ yakalanmalı")
+
+
+@created("yama O: idempotent — ikinci kez uygulanmaz")
+def _():
+    yeni, _u = yamala.yama_sensor(_SENSOR_STUB)
+    tekrar, uygulandi = yamala.yama_sensor(yeni)
+    dogru(not uygulandi, "ikinci uygulamada değişiklik olmamalı")
+    esit(tekrar, yeni)
+
+
+@created("yama O: motor gömülü değilse güvenle atlanır")
+def _():
+    try:
+        yamala.yama_sensor("def lambda_handler(e, c):\n    return None\n")
+        dogru(False, "motor yoksa YamaAtla beklenir")
+    except yamala.YamaAtla:
+        pass
+
+
+@created("yama O: depodaki gerçek fizik.py zaten sensör ayıklama içerir")
+def _():
+    with open(os.path.join(KOK, "backend", "motor", "fizik.py"), encoding="utf-8") as f:
+        gercek = f.read()
+    _yeni, uygulandi = yamala.yama_sensor(gercek)
+    dogru(not uygulandi, "depo kopyası zaten DE_SENSOR_AYIKLA işareti taşımalı")
+
+
 # ══════════════════ çalıştır ══════════════════
 
 if __name__ == "__main__":

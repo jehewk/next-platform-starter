@@ -804,6 +804,40 @@ def yama_soc(kaynak):
     return kaynak, True
 
 
+def yama_sensor(kaynak):
+    """O) Gömülü aku_degerlendir girişinde kopuk sensör (-40 °C) ayıklar.
+
+    Daly kopuk sıcaklık sensörünü -40 °C bildirir; motor bunu gerçek soğuk
+    sanıp sahte 'kritik termal' alarmı veriyordu. Ölçüm girişinde -40
+    nöbetçisi ayıklanır (try/except'li, olcum kopyalanir — çağıran bozulmaz).
+    Döner: (yeni, uygulandi)."""
+    if "DE_SENSOR_AYIKLA" in kaynak:
+        print("YAMA: sensor ayiklama zaten var.")
+        return kaynak, False
+    m = re.search(r"^def\s+aku_degerlendir\s*\(\s*olcum\s*\)\s*:[ \t]*\n",
+                  kaynak, re.M)
+    if not m:
+        raise YamaAtla("'def aku_degerlendir(olcum):' bulunamadi; fizik motoru bu Lambda'ya gomulu degil, sensor ayiklama eklenmedi.")
+    yer = m.end()
+    gm = re.match(r"([ \t]+)\S", kaynak[yer:])
+    g = gm.group(1) if gm else "    "
+    blok = (
+        f"{g}# DE_SENSOR_AYIKLA (yamala.py O): kopuk sicaklik sensoru (-40 C nobetcisi)\n"
+        f"{g}# gercek -40 C soguk sanilip sahte 'kritik termal' alarmi vermesin diye\n"
+        f"{g}# olcum girisinde ayiklanir.\n"
+        f"{g}try:\n"
+        f"{g}    _sl = olcum.get('sicakliklar')\n"
+        f"{g}    if _sl:\n"
+        f"{g}        olcum = dict(olcum)\n"
+        f"{g}        olcum['sicakliklar'] = [s for s in _sl if s is not None and float(s) > -39.5]\n"
+        f"{g}except Exception:\n"
+        f"{g}    pass\n"
+    )
+    kaynak = kaynak[:yer] + blok + kaynak[yer:]
+    print("YAMA: kopuk sensor ayiklama eklendi.")
+    return kaynak, True
+
+
 _PROFIL_YARDIMCI = '''
 def _de_profil_guncelle(event, body):
     """Musteri kendi profilini (adres/konum) gunceller; yalnizca kendi kaydi.
@@ -1016,6 +1050,7 @@ def main():
                      ("sayfalama", yama_sayfalama),
                      ("birlestir uyari korumasi", yama_birlestir_uyari),
                      ("soc kontrolu", yama_soc),
+                     ("kopuk sensor ayiklama", yama_sensor),
                      ("profil guncelleme", yama_profil),
                      ("kayit konum", yama_kayit_konum),
                      ("kurulum uclari", yama_kurulum)):
