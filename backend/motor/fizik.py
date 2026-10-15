@@ -1003,9 +1003,11 @@ def inverter_degerlendir(olcum, ortam_c=25.0):
                         olcum.get("igbt"), olcum.get("nominal_dc", 400.0))
     if k: bulgular.append(k)
 
-    s = sogutma_verimi(olcum.get("sogutucu"), olcum.get("sogutucu"),
-                       ortam_c, olcum.get("guc_kw"))
-    if s: bulgular.append(s)
+    # NOT: sogutma_verimi (mutlak, temelsiz) kaldirildi — fan_verimi ile ayni
+    # fiziktir (sogutucu-ortam farki) ama temelsiz oldugundan normal sogutucu
+    # sicakliklarinda yanlis alarm veriyor ve oncelikli mekanizmayi yanlis
+    # gosteriyordu (dogruluk.py bulgusu). Sogutma zayifligini fan_verimi
+    # (temel-deger + yuk-normalize) daha isabetli yakalar.
 
     k = kopru_dengesizligi(olcum.get("kopru_sicakliklari"),
                            olcum.get("temel_kopru_yayilim"))
