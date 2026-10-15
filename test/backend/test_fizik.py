@@ -601,6 +601,78 @@ def _():
     dogru(not uygulandi, "depo kopyası zaten düzeltme içermeli")
 
 
+# ══════════════════ 12. YAMA N: SoC kontrolü canlıya taşınır ══════════════════
+
+# Gömülü motoru taklit eden minimal stub (canlı lambda_function.py gibi)
+_MOTOR_STUB = '''
+def _birlestir(bulgular, tip, ek=None):
+    return {"tip": tip, "saglik": 90, "seviye": "normal", "bulgular": bulgular}
+
+
+def aku_degerlendir(olcum):
+    bulgular = []
+    sonuc = _birlestir(bulgular, "aku")
+    return sonuc
+
+
+def lambda_handler(event, context):
+    return None
+'''
+
+
+@created("yama N: SoC kontrolü gömülü motora eklenir ve çalışır")
+def _():
+    yeni, uygulandi = yamala.yama_soc(_MOTOR_STUB)
+    dogru(uygulandi, "yama uygulanmalı")
+    compile(yeni, "test", "exec")
+    ns = {}
+    exec(yeni, ns)
+    # fonksiyon tanımlı ve doğru sınıflandırıyor
+    sc = ns["soc_tutarlilik"](85.0, [3000, 3010, 3005], akim_a=1.0)
+    esit(sc["durum"], "surukleme_yuksek", "boş hücre + yüksek SoC sürüklenme")
+    # aku_degerlendir artık soc_kontrol döndürüyor, sağlık skoru bozulmadı
+    s = ns["aku_degerlendir"]({"soc": 85.0, "hucreler": [3000, 3010, 3005],
+                               "akim": 1.0})
+    esit(s["seviye"], "normal", "SoC kancası sağlık seviyesini değiştirmemeli")
+    dogru("soc_kontrol" in s, "soc_kontrol alanı eklenmeli")
+    esit(s["soc_kontrol"]["durum"], "surukleme_yuksek")
+
+
+@created("yama N: idempotent — ikinci kez uygulanmaz")
+def _():
+    yeni, _u = yamala.yama_soc(_MOTOR_STUB)
+    tekrar, uygulandi = yamala.yama_soc(yeni)
+    dogru(not uygulandi, "ikinci uygulamada değişiklik olmamalı")
+    esit(tekrar, yeni, "idempotent: içerik aynı kalmalı")
+
+
+@created("yama N: SoC kancası bir hatada değerlendirmeyi çökertmez (try/except)")
+def _():
+    yeni, _u = yamala.yama_soc(_MOTOR_STUB)
+    ns = {}
+    exec(yeni, ns)
+    # olcum olarak dict değil None benzeri — .get patlarsa except yutmalı
+    s = ns["aku_degerlendir"]({"soc": "bozuk", "hucreler": [3000], "akim": None})
+    dogru(s is not None, "SoC hatası değerlendirmeyi çökertmemeli")
+
+
+@created("yama N: motor gömülü değilse güvenle atlanır")
+def _():
+    try:
+        yamala.yama_soc("def lambda_handler(e, c):\n    return None\n")
+        dogru(False, "motor yoksa YamaAtla beklenir")
+    except yamala.YamaAtla:
+        pass
+
+
+@created("yama N: depodaki gerçek fizik.py zaten SoC kontrolü içerir (çift uygulanmaz)")
+def _():
+    with open(os.path.join(KOK, "backend", "motor", "fizik.py"), encoding="utf-8") as f:
+        gercek = f.read()
+    _yeni, uygulandi = yamala.yama_soc(gercek)
+    dogru(not uygulandi, "depo kopyası zaten DE_SOC_KONTROL işareti taşımalı")
+
+
 # ══════════════════ çalıştır ══════════════════
 
 if __name__ == "__main__":

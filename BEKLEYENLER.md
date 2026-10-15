@@ -67,9 +67,12 @@ uygulanacak) kararları tutar.
   sürüklenmesini yakalar (aşırı deşarj riski), düz bölgede "doğrulanamaz" der.
   `aku_degerlendir` çıktısında ayrı `soc_kontrol` alanı (sağlık skorunu
   etkilemez). Testler: `test_fizik.py` §10 (8 senaryo).
-  - ⏳ **Canlıya gitmesi için tam lambda deploy gerekir** — `lambda-yukle.ps1`
-    yalnız `lambda_function.py` değiştirir, `motor/` paketini yenilemez.
-    Gerçek Daly verisi henüz akmadığı için acil değil; fabrika testinden önce
-    motoru yenileyen bir deploy yapılmalı.
+  - ✅ **Canlıya deploy hazır** — `yamala.py` N yaması gömülü motora
+    `soc_tutarlilik`'i + `aku_degerlendir` kancasını (try/except'li, sağlık
+    skorunu bozmaz) enjekte eder; idempotent, gömülü değilse güvenle atlanır.
+    Komut: `cd C:\dennis\aws; git pull; .\hepsini-kur.ps1 -Atla backend,hesap,web`
+    (yalnız lambda adımı — yedekli, `/de/kaptcha` sağlık kontrollü, otomatik
+    geri-dönüşlü). Gerçek Daly verisi henüz yok; fabrika testinden önce
+    çalıştırmak yeterli.
   - ⏳ (opsiyonel) Panelde `soc_kontrol.durum == surukleme_*` ise
     "BMS kalibrasyonu: tam şarj yapın" rozeti gösterilebilir.

@@ -706,6 +706,104 @@ def yama_birlestir_uyari(kaynak):
     return kaynak, True
 
 
+_SOC_YARDIMCI = '''
+# DE_SOC_KONTROL (yamala.py N): LiFePO4 SoC-gerilim tutarlilik/suruklenme kontrolu.
+# Motor SoH'u degerlendiriyordu ama BMS'in SoC'sini hic dogrulamiyordu; coulomb
+# sayimli SoC duz egri yuzunden suruklenir, yuksege suruklenme asiri desarj riski.
+SOC_BOS_ESIK_MV = 3050.0
+SOC_DOLU_ESIK_MV = 3380.0
+SOC_DINLENME_A = 3.0
+SOC_DINLENME_C = 0.03
+
+
+def soc_tutarlilik(soc, hucreler_mv, akim_a=None, kapasite_ah=None):
+    """BMS SoC'si hucre gerilimleriyle tutarli mi? Yalniz dinlenmede (dusuk akim)
+    ve LiFePO4 egrisinin diz bolgelerinde karar verir; duz bolgede ve yuk altinda
+    'dogrulanamaz' doner (sahte alarm uretmez)."""
+    if soc is None or not hucreler_mv or len(hucreler_mv) < 1:
+        return None
+    soc = float(soc)
+    en_dusuk = min(hucreler_mv)
+    en_yuksek = max(hucreler_mv)
+    esik_a = SOC_DINLENME_A
+    if kapasite_ah:
+        esik_a = max(SOC_DINLENME_A, SOC_DINLENME_C * float(kapasite_ah))
+    dinlenme = akim_a is None or abs(float(akim_a)) <= esik_a
+    temel = {'mekanizma': 'soc_tutarlilik', 'soc': round(soc, 1),
+             'min_hucre_mv': round(float(en_dusuk), 0),
+             'max_hucre_mv': round(float(en_yuksek), 0),
+             'dinlenme': bool(dinlenme)}
+    if not dinlenme:
+        temel.update({'durum': 'dogrulanamaz', 'seviye': 'normal',
+                      'not': 'Yuk altinda; gerilim IR dusumuyle bozuk. SoC dinlenmede dogrulanabilir.'})
+        return temel
+    if en_dusuk <= SOC_BOS_ESIK_MV:
+        if soc > 30.0:
+            seviye = 'kritik' if soc > 50.0 else 'uyari'
+            temel.update({'durum': 'surukleme_yuksek', 'seviye': seviye,
+                          'oneri': "Tam sarj yapip BMS'i kalibre edin; SoC tam sarjda %100'e sifirlanir.",
+                          'not': 'En dusuk hucre bos diz bolgesinde ama SoC yuksek - yuksege suruklenme, asiri desarj riski.'})
+            return temel
+        temel.update({'durum': 'tutarli', 'seviye': 'normal',
+                      'not': 'Paket bosa yakin, SoC ile tutarli.'})
+        return temel
+    if en_yuksek >= SOC_DOLU_ESIK_MV:
+        if soc < 70.0:
+            temel.update({'durum': 'surukleme_dusuk', 'seviye': 'uyari',
+                          'oneri': "Tam sarj sonrasi SoC %100'e oturmuyorsa BMS kalibrasyonu gerekir.",
+                          'not': 'En yuksek hucre dolu diz bolgesinde ama SoC dusuk - dusuge suruklenme.'})
+            return temel
+        temel.update({'durum': 'tutarli', 'seviye': 'normal',
+                      'not': 'Paket doluya yakin, SoC ile tutarli.'})
+        return temel
+    temel.update({'durum': 'dogrulanamaz', 'seviye': 'normal',
+                  'not': 'Hucreler duz bolgede; LiFePO4 egrisi yatik, gerilimden SoC dogrulanamaz.'})
+    return temel
+'''
+
+
+def yama_soc(kaynak):
+    """N) Gömülü motora SoC-gerilim tutarlılık kontrolü ekler. Döner: (yeni, uygulandi).
+
+    1) `soc_tutarlilik` fonksiyonunu modül düzeyine, `aku_degerlendir`'den önce ekler.
+    2) `aku_degerlendir` gövdesinde `sonuc = _birlestir(bulgular, "aku")` sonrasına,
+       sağlık skorunu bozmayan ayrı `soc_kontrol` alanını dolduran çağrıyı ekler
+       (try/except ile sarılı — bir SoC hatası üretimde değerlendirmeyi çökertmez)."""
+    if "DE_SOC_KONTROL" in kaynak:
+        print("YAMA: SoC kontrolu zaten var.")
+        return kaynak, False
+    m = re.search(r"^def\s+aku_degerlendir\s*\(", kaynak, re.M)
+    if not m:
+        raise YamaAtla("'def aku_degerlendir' bulunamadi; fizik motoru bu Lambda'ya gomulu degil, SoC kontrolu eklenmedi.")
+
+    # 1) Fonksiyonu aku_degerlendir'den önce modül düzeyine ekle
+    kaynak = kaynak[:m.start()] + _SOC_YARDIMCI.lstrip("\n") + "\n\n" + kaynak[m.start():]
+
+    # 2) aku_degerlendir gövdesinde _birlestir çağrısından sonra kancayı ekle
+    sinir = _fonksiyon_govdesi(kaynak, "aku_degerlendir")
+    bas, bit = sinir
+    govde = kaynak[bas:bit]
+    cm = re.search(
+        r"""^([ \t]*)sonuc\s*=\s*_birlestir\s*\(\s*bulgular\s*,\s*['"]aku['"]\s*\)[ \t]*\n""",
+        govde, re.M)
+    if not cm:
+        raise YamaAtla("aku_degerlendir icinde 'sonuc = _birlestir(bulgular, \"aku\")' bulunamadi; yapi beklenenden farkli.")
+    g = cm.group(1)
+    cagri = (
+        f"{g}# SoC-gerilim tutarliligi: saglik skorunu/garanti analizini etkilemez (ayri alan).\n"
+        f"{g}try:\n"
+        f"{g}    _sc = soc_tutarlilik(olcum.get('soc'), olcum.get('hucreler'), akim_a=olcum.get('akim'), kapasite_ah=olcum.get('kapasite_ah'))\n"
+        f"{g}    if _sc:\n"
+        f"{g}        sonuc['soc_kontrol'] = _sc\n"
+        f"{g}except Exception:\n"
+        f"{g}    pass\n"
+    )
+    yer = bas + cm.end()
+    kaynak = kaynak[:yer] + cagri + kaynak[yer:]
+    print("YAMA: SoC-gerilim tutarlilik kontrolu eklendi.")
+    return kaynak, True
+
+
 _PROFIL_YARDIMCI = '''
 def _de_profil_guncelle(event, body):
     """Musteri kendi profilini (adres/konum) gunceller; yalnizca kendi kaydi.
@@ -917,6 +1015,7 @@ def main():
                      ("e-posta dogrulama", yama_eposta_dogrula), ("KVKK onayi", yama_kvkk),
                      ("sayfalama", yama_sayfalama),
                      ("birlestir uyari korumasi", yama_birlestir_uyari),
+                     ("soc kontrolu", yama_soc),
                      ("profil guncelleme", yama_profil),
                      ("kayit konum", yama_kayit_konum),
                      ("kurulum uclari", yama_kurulum)):

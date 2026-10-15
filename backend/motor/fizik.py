@@ -84,6 +84,7 @@ def soh_duzelt(olculen_soh, sicaklik_c):
 
 
 # ══════════════════ SoC TUTARLILIĞI (LiFePO4) ══════════════════
+# DE_SOC_KONTROL — bu işaret yamala.py N'in çift enjeksiyonu önlemesini sağlar.
 #
 # LiFePO4 dinlenme gerilim eğrisi ~%20-90 arası düzdür; bu bölgede gerilimden
 # SoC doğrulanamaz. Ama eğrinin "diz" bölgelerinde gerilim bilgilendiricidir:
