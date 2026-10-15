@@ -92,11 +92,58 @@ SENSOR_KOPUK_C = -40.0
 
 
 def gecerli_sicakliklar(liste):
-    """Kopuk-sensör nöbetçisini (-40 °C) ve None değerleri ayıklar."""
-    if not liste:
+    """Kopuk-sensör nöbetçisini (-40 °C) ve None/çöp değerleri ayıklar."""
+    return [s for s in _sayi_listesi(liste) if s > SENSOR_KOPUK_C + 0.5]
+
+
+# ══════════════════ GİRİŞ TİP-GÜVENLİĞİ (dayanıklılık) ══════════════════
+# Saha/BMS verisi gerçek dünyadan gelir: eksik hücre (None), yarım çerçeve,
+# sayı yerine metin olabilir. Bir bozuk alan TÜM değerlendirmeyi çökertmemeli
+# (yoksa Lambda 500 → ölçüm kaybı + sahte ops alarmı). tersine.py bulgusu.
+
+def _sayi(x):
+    """Güvenli float; çevrilemezse / NaN / sonsuz ise None."""
+    if x is None or isinstance(x, bool):
+        return None
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(v) or math.isinf(v):
+        return None
+    return v
+
+
+def _sayi_listesi(xs):
+    """Listedeki çevrilebilir sayıları tutar; None/çöp/NaN'ı atar."""
+    if not isinstance(xs, (list, tuple)):
         return []
-    return [float(s) for s in liste
-            if s is not None and float(s) > SENSOR_KOPUK_C + 0.5]
+    return [v for v in (_sayi(x) for x in xs) if v is not None]
+
+
+# Giriş ölçümünde sayıya çevrilecek skaler alanlar
+_SAYI_ALANLARI = (
+    "akim", "soc", "cevrim", "ic_direnc", "temel_direnc", "temel_fark_mv",
+    "kapasite_ah", "gerilim", "sicaklik", "igbt", "sogutucu", "thd",
+    "dc_gerilim", "nominal_dc", "guc_kw", "guc_w", "anma_guc_w", "dc_akim",
+    "dc_guc_w", "ac_guc_w", "yas_yil", "ortalama_sicaklik",
+    "temel_kopru_yayilim", "temel_sogutucu_fark", "soh", "olculen_soh",
+)
+_LISTE_ALANLARI = ("hucreler", "sicakliklar", "kopru_sicakliklari")
+
+
+def temizle_olcum(olcum):
+    """Bir ölçüm sözlüğünü tip-güvenli kopyaya çevirir (çağıranı bozmaz)."""
+    if not isinstance(olcum, dict):
+        return {}
+    o = dict(olcum)
+    for a in _SAYI_ALANLARI:
+        if a in o:
+            o[a] = _sayi(o[a])
+    for a in _LISTE_ALANLARI:
+        if a in o and o[a] is not None:
+            o[a] = _sayi_listesi(o[a])
+    return o
 
 
 # ══════════════════ SoC TUTARLILIĞI (LiFePO4) ══════════════════
@@ -123,18 +170,21 @@ def soc_tutarlilik(soc, hucreler_mv, akim_a=None, kapasite_ah=None):
     karar verir. Duz bolgede/yuk altinda 'dogrulanamaz' doner. Suruklenme
     tespit edilirse tam sarjla kalibrasyon onerir.
     """
-    if soc is None or not hucreler_mv or len(hucreler_mv) < 1:
+    soc = _sayi(soc)
+    hucreler_mv = _sayi_listesi(hucreler_mv)
+    if soc is None or not hucreler_mv:
         return None
 
-    soc = float(soc)
     en_dusuk = min(hucreler_mv)
     en_yuksek = max(hucreler_mv)
 
     # Dinlenme mi? Yuk altinda IR dusumu gerilimi bozar; karar verilemez.
+    akim_a = _sayi(akim_a)
+    kapasite_ah = _sayi(kapasite_ah)
     esik_a = SOC_DINLENME_A
     if kapasite_ah:
-        esik_a = max(SOC_DINLENME_A, SOC_DINLENME_C * float(kapasite_ah))
-    dinlenme = akim_a is None or abs(float(akim_a)) <= esik_a
+        esik_a = max(SOC_DINLENME_A, SOC_DINLENME_C * kapasite_ah)
+    dinlenme = akim_a is None or abs(akim_a) <= esik_a
 
     temel = {
         "mekanizma":    "soc_tutarlilik",
@@ -330,7 +380,10 @@ def aku_cevrim_yorulmasi(cevrim, beklenen_omur=3000):
     if cevrim is None:
         return None
 
-    oran = cevrim / beklenen_omur
+    # Negatif/sıfır girdi fiziksel değil; kesirli üs complex üretmesin diye koru
+    if not beklenen_omur or beklenen_omur <= 0:
+        return None
+    oran = max(0.0, cevrim / beklenen_omur)
     beklenen_kapasite = 100 - 20 * (oran ** 0.7)
 
     seviye = ("kritik" if oran > 0.95 else
@@ -955,7 +1008,19 @@ def aku_kalan_sure(gecmis_olcumler, temel_fark_mv=None, temel_direnc=None,
 # ══════════════════ TOPLU DEĞERLENDİRME ══════════════════
 
 def aku_degerlendir(olcum):
-    """Bir akü ölçümünden tüm bozulma mekanizmalarını değerlendirir."""
+    """Akü değerlendirmesi — tip-güvenli + çökme-güvenli giriş noktası.
+
+    Bir ölçüm asla değerlendirmeyi çökertmemeli (Lambda 500 → ölçüm kaybı).
+    Gerçekçi bozuk veri temizle_olcum ile düzgün işlenir; patolojik sayısal
+    taşma da güvenli 'bilinmiyor' sonucuna düşer."""
+    try:
+        return _aku_degerlendir(temizle_olcum(olcum))
+    except Exception:  # noqa — giriş noktası çökme-güvenligi (tersine.py)
+        return {"tip": "aku", "saglik": None, "seviye": "bilinmiyor",
+                "bulgular": [], "hata": "degerlendirme_hatasi"}
+
+
+def _aku_degerlendir(olcum):
     bulgular = []
 
     h = aku_hucre_dengesizligi(
@@ -1009,7 +1074,15 @@ def aku_degerlendir(olcum):
 
 
 def inverter_degerlendir(olcum, ortam_c=25.0):
-    """Bir inverter ölçümünden tüm bozulma mekanizmalarını değerlendirir."""
+    """İnverter değerlendirmesi — tip-güvenli + çökme-güvenli giriş noktası."""
+    try:
+        return _inverter_degerlendir(temizle_olcum(olcum), ortam_c)
+    except Exception:  # noqa — giriş noktası çökme-güvenligi (tersine.py)
+        return {"tip": "inverter", "saglik": None, "seviye": "bilinmiyor",
+                "bulgular": [], "hata": "degerlendirme_hatasi"}
+
+
+def _inverter_degerlendir(olcum, ortam_c=25.0):
     bulgular = []
 
     i = igbt_termal_yorulma(olcum.get("igbt"), olcum.get("sogutucu"), ortam_c)
