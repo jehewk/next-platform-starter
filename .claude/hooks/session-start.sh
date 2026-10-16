@@ -16,7 +16,7 @@ export PYTHONDONTWRITEBYTECODE=1
 
 echo "Dennis fizik motoru test katmanları:"
 basarisiz=0
-for t in test_fizik test_backend test_guvenlik dogruluk dogruluk_zor tersine; do
+for t in test_fizik test_backend test_guvenlik test_bildirim test_asistan dogruluk dogruluk_zor tersine; do
   dosya="test/backend/$t.py"
   [ -f "$dosya" ] || continue
   cikti="$("$PY" "$dosya" 2>&1)"
