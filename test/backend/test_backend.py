@@ -493,9 +493,55 @@ def test_yama_duzeltmeleri():
     ok("sayfalama: Table(X).scan().get('Items', []) → _de_tara(...) ile sayfalanır")
 
 
+def test_ek_uclar():
+    """#9: /de/musteri/guncelle, /de/sifre/sifirla, /de/bildirim/iptal."""
+    mod, dyn, cog, tablolar = yukle()
+    tohum(dyn, cog)
+    M = tablolar['dennis-musteriler']
+
+    # ── /de/musteri/guncelle — yetki + izinli alan ──
+    es(istek(mod, '/de/musteri/guncelle', {'musteri_id': 'MST-1', 'ad': 'X'})[0], 401, 'oturumsuz 401')
+    es(istek(mod, '/de/musteri/guncelle', {'musteri_id': 'MST-1', 'ad': 'X'}, token=MUS)[0], 403,
+       'musteri bu ucu kullanamaz 403')
+    k, _ = istek(mod, '/de/musteri/guncelle',
+                 {'musteri_id': 'MST-1', 'ad': 'Ali Veli', 'email': 'ALI@X.com', 'il': 'Adana'}, token=URE)
+    es(k, 200, 'uretici guncelleyebilir')
+    it = M.get_item(Key={'musteri_id': 'MST-1'})['Item']
+    es(it['ad'], 'Ali Veli', 'ad guncellendi')
+    es(it['email'], 'ali@x.com', 'email kucuk harfe normalize')
+    es(it['musteri_id'], 'MST-1', 'korunan alan degismez')
+    ok("musteri/guncelle: yetki (401/403), izinli alan, email normalizasyon, korunan alan")
+
+    es(istek(mod, '/de/musteri/guncelle', {'musteri_id': 'MST-1', 'ad': '  '}, token=URE)[0], 400, 'bos ad 400')
+    es(istek(mod, '/de/musteri/guncelle', {'musteri_id': 'YOK', 'ad': 'x'}, token=URE)[0], 404, 'olmayan 404')
+    es(istek(mod, '/de/musteri/guncelle', {'musteri_id': 'MST-1', 'lat': 200}, token=URE)[0], 400, 'lat aralik disi 400')
+    ok("musteri/guncelle: bos ad 400, olmayan musteri 404, koordinat araligi 400")
+
+    # ── /de/sifre/sifirla (açık uç, kod tabanlı) ──
+    es(istek(mod, '/de/sifre/sifirla', {'eposta': 'ali@x.com', 'kod': '123456', 'yeni_sifre': 'YeniSifre1'})[0],
+       200, 'dogru kod sifirlar')
+    es(cog.kullanicilar['ali@x.com']['sifre'], 'YeniSifre1', 'sifre gercekten degisti')
+    es(istek(mod, '/de/sifre/sifirla', {'eposta': 'ali@x.com', 'kod': '999999', 'yeni_sifre': 'YeniSifre1'})[0],
+       400, 'yanlis kod 400')
+    es(istek(mod, '/de/sifre/sifirla', {'eposta': 'ali@x.com', 'kod': '123456', 'yeni_sifre': 'kisa'})[0],
+       400, 'kurallara uymayan sifre 400')
+    ok("sifre/sifirla: dogru kod 200+degisir, yanlis kod 400, zayif sifre 400")
+
+    # ── /de/bildirim/iptal — kimlik kapısı + abonelik silme ──
+    abone = {'abonelik': {'endpoint': 'https://fcm.googleapis.com/fcm/send/xyz',
+                          'keys': {'p256dh': 'B' * 87, 'auth': 'A' * 22}}}
+    es(istek(mod, '/de/bildirim/abone', abone, token=MUS)[0], 200, 'once abone ol')
+    es(len(tablolar['dennis-bildirim'].ogeler), 1, 'abonelik kaydedildi')
+    es(istek(mod, '/de/bildirim/iptal', abone)[0], 401, 'oturumsuz iptal 401')
+    es(istek(mod, '/de/bildirim/iptal', abone, token=MUS)[0], 200, 'kimlikli iptal 200')
+    es(len(tablolar['dennis-bildirim'].ogeler), 0, 'iptal sonrası abonelik silinmeli')
+    ok("bildirim/iptal: kimlik kapisi (401), kimlikli iptal 200, abonelik silinir")
+
+
 if __name__ == '__main__':
     for test in (test_yetki, test_veri_akisi, test_hesap_entegrasyon, test_profil, test_kayit_konum,
-                 test_kurulum, test_bildirim_ssrf, test_dayaniklilik, test_yuk, test_yama_duzeltmeleri):
+                 test_kurulum, test_ek_uclar, test_bildirim_ssrf, test_dayaniklilik, test_yuk,
+                 test_yama_duzeltmeleri):
         print(f"\n{test.__name__}")
         test()
     print(f"\nHEPSİ TAMAM ({len(GECEN)} kontrol)")

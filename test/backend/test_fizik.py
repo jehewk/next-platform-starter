@@ -728,6 +728,66 @@ def _():
     dogru(not uygulandi, "depo kopyası zaten DE_SENSOR_AYIKLA işareti taşımalı")
 
 
+# ══════════════════ 14. KAYNAK ALT FONKSİYONLARI (izole birim) ══════════════
+
+@created("sifir_alti_sarj: 0°C altı + şarj → kullanım; sıcakta/deşarjda None")
+def _():
+    a = kaynak.sifir_alti_sarj({"sicaklik": -8, "akim": 20, "sarjda": True, "kapasite_ah": 100})
+    dogru(a and a["sinif"] == "kullanim", "soğukta şarj kullanım işareti")
+    dogru(a["agirlik"] >= 0.7, "şiddetli soğuk şarj yüksek ağırlık")
+    dogru(kaynak.sifir_alti_sarj({"sicaklik": 20, "akim": 20, "sarjda": True}) is None,
+          "sıcakta işaret yok")
+    dogru(kaynak.sifir_alti_sarj({"sicaklik": -8, "akim": -20, "sarjda": False}) is None,
+          "deşarjda soğuk-şarj işareti yok")
+
+
+@created("sifir_alti_sarj: kopuk sensör (-40) soğuk-şarj sanılmaz")
+def _():
+    # sicaklik alanı yok, sicakliklar hepsi -40 (kopuk) → gecerli_sicakliklar boş → işaret yok
+    a = kaynak.sifir_alti_sarj({"sicakliklar": [-40, -40], "akim": 20, "sarjda": True})
+    dogru(a is None, "kopuk sensör soğuk-şarj tetiklememeli")
+
+
+@created("baslangic_dengesizligi: baştan yüksek + büyümeyen → üretim")
+def _():
+    d = {"trend_orani": 1.1, "duzeltilmis_fark_mv": 30.0}
+    r = kaynak.baslangic_dengesizligi(d, calisma_gun=120)
+    dogru(r and r["sinif"] == "uretim", "trend düşük + yüksek fark → üretim")
+    # büyüyen trend → üretim işareti değil
+    dogru(kaynak.baslangic_dengesizligi({"trend_orani": 3.0, "duzeltilmis_fark_mv": 30.0}, 120) is None,
+          "büyüyen fark başlangıç kusuru sayılmaz")
+
+
+@created("sarj_gerilimi_asimi: nominalin %15 üstü → dış etken")
+def _():
+    r = kaynak.sarj_gerilimi_asimi({"dc_gerilim": 480, "nominal_dc": 400})
+    dogru(r and r["sinif"] == "dis_etken", "%20 aşım dış etken")
+    dogru(kaynak.sarj_gerilimi_asimi({"dc_gerilim": 405, "nominal_dc": 400}) is None,
+          "%1 aşım dış etken değil")
+
+
+@created("yuk_bagimli_dengesizlik: yükte büyüyüp boşta kaybolan → kullanım")
+def _():
+    d = {"yuk_carpani": 1.8, "fark_mv": 50.0, "duzeltilmis_fark_mv": 10.0}
+    r = kaynak.yuk_bagimli_dengesizlik(d)
+    dogru(r and r["sinif"] == "kullanim", "yük bağımlı fark kullanım/bağlantı")
+    dogru(kaynak.yuk_bagimli_dengesizlik({"yuk_carpani": 1.0, "fark_mv": 50, "duzeltilmis_fark_mv": 48}) is None,
+          "yük çarpanı düşükse işaret yok")
+
+
+@created("temizle_olcum: None/metin sayıya çevrilir ya da ayıklanır, çağıran bozulmaz")
+def _():
+    ham = {"akim": "bozuk", "soc": "50", "hucreler": [3300, None, "3301", float("nan")],
+           "cevrim": None, "sicakliklar": [25, "x", 30]}
+    t = fizik.temizle_olcum(ham)
+    dogru(t["akim"] is None, "çevrilemeyen sayı None olmalı")
+    esit(t["soc"], 50.0, "metin sayı float'a çevrilmeli")
+    esit(t["hucreler"], [3300.0, 3301.0], "None/NaN/çöp hücreler ayıklanmalı")
+    esit(t["sicakliklar"], [25.0, 30.0], "çöp sıcaklık ayıklanmalı")
+    dogru(ham["akim"] == "bozuk", "çağıranın sözlüğü değişmemeli")
+    esit(fizik.temizle_olcum("dict değil"), {}, "dict olmayan girdi {} döner")
+
+
 # ══════════════════ çalıştır ══════════════════
 
 if __name__ == "__main__":
