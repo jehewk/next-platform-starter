@@ -30,8 +30,25 @@ for t in test_fizik test_backend test_guvenlik test_bildirim test_asistan dogrul
   fi
 done
 
+# Frontend saf-mantık testleri (düz Node .mjs; runner/kurulum gerekmez)
+NODE="$(command -v node || true)"
+if [ -n "$NODE" ]; then
+  for m in test/ayristirici.mjs test/frontend-birim.mjs; do
+    [ -f "$m" ] || continue
+    cikti="$("$NODE" "$m" 2>&1)"
+    if [ $? -eq 0 ]; then
+      ozet="$(printf '%s\n' "$cikti" | grep -E 'geçti|başarısız' | tail -1)"
+      echo "  ✓ $(basename "$m")  ${ozet:-ok}"
+    else
+      echo "  ✗ $(basename "$m") BAŞARISIZ:"
+      printf '%s\n' "$cikti" | tail -6 | sed 's/^/      /'
+      basarisiz=1
+    fi
+  done
+fi
+
 if [ "$basarisiz" -eq 0 ]; then
-  echo "Tüm test katmanları geçti (doğruluk + zor + tersine + birim/güvenlik)."
+  echo "Tüm test katmanları geçti (fizik + backend + frontend saf-mantık)."
 else
   echo "UYARI: bazı test katmanları başarısız — yukarıya bak."
 fi
