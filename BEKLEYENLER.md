@@ -86,3 +86,16 @@ uygulanacak) kararları tutar.
   `cd C:\dennis\aws; git pull; .\hepsini-kur.ps1 -Atla backend,hesap,web`
   (SoC yaması N + sensör yaması O birlikte uygulanır, yedekli + sağlık
   kontrollü). Akü yolu canlıda aktif olduğu için fabrika öncesi çalıştırılmalı.
+
+- **Test kapsamı (bu tur eklendi)** — ✅ bildirim Lambda'sı (kripto gidiş-dönüş
+  dahil), asistan Lambda'sı (kota/görsel), kaynak.py alt fonksiyonları, backend
+  uçları (musteri/guncelle, sifre/sifirla, bildirim/iptal), frontend saf mantık
+  (garanti, müşteri ayrıştırıcı), panel-musteri vitest (ble, oturum, istemci 401
+  akışı, servis dönüştürücüleri). Tümü SessionStart hook'unda koşuyor.
+  - ⏳ **esp32-saha firmware testi** — yalnız wokwi simülatör varyantları test
+    ediliyor; sahaya giden `esp32-saha/` (BLE provisioning `kurulum.h`, gerçek
+    sensör yolu) C++ test koşumu ya da cihaz üstü test gerektiriyor. Paylaşılan
+    başlıklar (daly_bms.h, paket.h, direnc.h, olcum.h) wokwi tarafında test edili;
+    BLE akışı bu oturumda uçtan uca elle doğrulandı. Fabrika testinde kapatılır.
+  - ⏳ (opsiyonel) panel-uretici servis/oturum — panel-musteri ile analog; aynı
+    vitest düzeni istenirse oraya da eklenir.
