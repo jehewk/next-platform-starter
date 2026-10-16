@@ -47,8 +47,20 @@ if [ -n "$NODE" ]; then
   done
 fi
 
+# panel-musteri vitest (yalnız bağımlılık kuruluysa; taze container'da atlanır)
+if [ -n "$NODE" ] && [ -x panel-musteri/node_modules/.bin/vitest ]; then
+  cikti="$(cd panel-musteri && node_modules/.bin/vitest run 2>&1)"
+  if [ $? -eq 0 ]; then
+    echo "  ✓ panel-musteri vitest  $(printf '%s\n' "$cikti" | grep -E 'Tests ' | tail -1 | tr -s ' ')"
+  else
+    echo "  ✗ panel-musteri vitest BAŞARISIZ:"
+    printf '%s\n' "$cikti" | tail -8 | sed 's/^/      /'
+    basarisiz=1
+  fi
+fi
+
 if [ "$basarisiz" -eq 0 ]; then
-  echo "Tüm test katmanları geçti (fizik + backend + frontend saf-mantık)."
+  echo "Tüm test katmanları geçti (fizik + backend + frontend)."
 else
   echo "UYARI: bazı test katmanları başarısız — yukarıya bak."
 fi
