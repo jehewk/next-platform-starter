@@ -160,7 +160,6 @@ def olc():
             else:
                 deg = fizik.inverter_degerlendir(s["olcum"])
 
-            arizali = not s["saglikli"]
             seviye = deg.get("seviye")
             tespit_edildi = seviye in ("uyari", "kritik")
 

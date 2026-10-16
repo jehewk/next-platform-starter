@@ -7,7 +7,7 @@ saldırıları dener. Kıran bir kontrol = gerçek açık.
 Çalıştır:  python3 test_guvenlik.py
 """
 import test_backend as T
-from test_backend import es, ok, istek, yukle, tohum, jwt, MUS, MUS2, URE
+from test_backend import es, ok, istek, yukle, tohum, MUS, URE
 
 
 def test_bozuk_govde():

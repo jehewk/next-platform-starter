@@ -51,15 +51,6 @@ def kapasite_sapmasi(sicaklik_c):
     return a * t * t + b * t + c
 
 
-def kapasite_duzelt(olculen_ah, sicaklik_c):
-    """Olculen kapasiteyi 25 C esdegerine cevirir."""
-    if olculen_ah is None or sicaklik_c is None:
-        return olculen_ah, 1.0
-    sapma = kapasite_sapmasi(sicaklik_c)
-    carpan = 1.0 / (1.0 + sapma / 100.0)
-    return olculen_ah * carpan, carpan
-
-
 def soh_duzelt(olculen_soh, sicaklik_c):
     """Olculen SOH'u sicakliga gore duzeltir ve aciklamasiyla dondurur."""
     if olculen_soh is None:
@@ -467,7 +458,6 @@ def igbt_termal_yorulma(igbt_c, sogutucu_c, ortam_c=25.0):
         return None
 
     fark = igbt_c - sogutucu_c
-    fark_orani = fark / REF_SICAKLIK_IGBT if REF_SICAKLIK_IGBT else 0
 
     if fark > REF_SOGUTUCU_FARK:
         omur_kaybi = ((fark / REF_SOGUTUCU_FARK) ** 2.5 - 1) * 100
@@ -581,33 +571,10 @@ def kopru_dengesizligi(sicakliklar_c, temel_yayilim_c=None):
     }
 
 
-def sogutma_verimi(igbt_c, sogutucu_c, ortam_c=25.0, guc_kw=None):
-    """Soğutma sisteminin (fan, kanatçık) verim kaybı."""
-    if sogutucu_c is None:
-        return None
-
-    ortam_fark = sogutucu_c - ortam_c
-    beklenen = 12.0 if guc_kw is None else 8.0 + guc_kw * 0.9
-
-    oran = ortam_fark / beklenen if beklenen else 1.0
-
-    if oran > 2.0:
-        seviye, skor = "kritik", 32
-    elif oran > 1.45:
-        seviye, skor = "uyari", 68
-    else:
-        seviye = "normal"
-        skor = 100 - max(0, (oran - 1) * 40)
-
-    return {
-        "mekanizma":       "sogutma_verimi",
-        "sogutucu_c":      round(sogutucu_c, 1),
-        "ortam_fark_c":    round(ortam_fark, 1),
-        "beklenen_fark_c": round(beklenen, 1),
-        "verim_orani":     round(1 / oran if oran else 1, 2),
-        "seviye":          seviye,
-        "skor":            round(max(0, min(100, skor))),
-    }
+# NOT: sogutma_verimi fonksiyonu kaldırıldı — mutlak/temelsiz olduğu için
+# yanlış alarm veriyordu, yerini fan_verimi aldı (dogruluk.py bulgusu).
+# "sogutma_verimi" etiketi MEKANIZMA_ADI ve ozet_metin'de duruyor; çünkü
+# test/sahte-api.mjs hâlâ bu mekanizmalı örnek bulgu üretebiliyor.
 
 
 # ══════════════════ İNVERTER — SAHA KAYNAKLI GÖSTERGELER ══════════════════

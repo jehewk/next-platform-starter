@@ -15,7 +15,6 @@ Burada doğrulanan kurallar gerçek backend'de de geçerli olmalıdır:
 """
 import json
 import os
-import re
 from decimal import Decimal
 from datetime import datetime, timezone
 

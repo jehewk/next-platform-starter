@@ -16,7 +16,6 @@ motorun kendi iç tutarlılığını sınar.
   4. DAYANIKLILIK — binlerce rastgele/aşırı/bozuk girdide exception/NaN olmamalı
   5. EŞİK HARİTASI — gerçek seviye-geçiş noktaları bulunur ve raporlanır
 """
-import math
 import os
 import random
 import sys
