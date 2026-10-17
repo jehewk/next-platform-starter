@@ -203,6 +203,9 @@ try {
     kontrol(`${on}: tek akünün gidişatı (seçilen dönem)`, await s.getByText(/AKU-D24-0071 — son 14 günün hücre gerilim farkı/).first().isVisible());
     kontrol(`${on}: sağlık geçmişi dil modeline gitmedi`, !(await s.getByText("(uretici, geçmiş 6)").count()));
     await s.locator('input[type="file"]').setInputFiles(join(kok, "panel-uretici/public/ikon-512.png"));
+    // Görsel asenkron hazırlanır (fotografHazirla); önizleme belirmeden soru
+    // gönderilirse görsel eklenmeden gider. Müşteri adımıyla aynı bekleme.
+    await s.getByAltText("Eklenen fotoğraf").waitFor({ timeout: 5000 });
     await sor("bu akünün etiketi ne diyor");
     kontrol(`${on}: fotoğraf incelendi`, await s.getByText(/FOTOĞRAF İNCELENDİ/).first().isVisible());
     await sor("bana hesap makinesi için kod yaz");
