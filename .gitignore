@@ -70,3 +70,7 @@ __pycache__/
 /postcss.config.js
 /.eslintrc.json
 /.prettierrc
+
+# IAM erisim anahtari dosyalari (asla commit edilmez)
+dennis-iam-*.env
+*-anahtar.env

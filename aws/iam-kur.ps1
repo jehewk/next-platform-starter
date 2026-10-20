@@ -56,16 +56,35 @@ $ak = Cagir iam create-access-key --user-name $KullaniciAdi
 $id = $ak.AccessKey.AccessKeyId
 $secret = $ak.AccessKey.SecretAccessKey
 
+# GUVENLIK: Secret ASLA ekrana/loga basilmaz (ekran goruntusu/kopyala-yapistir
+# ile sizar). Repo DISINDAKI kullanici profiline, yalnizca sahibinin okuyabilecegi
+# bir dosyaya yazilir; ekranda sadece zararsiz Access Key ID gorunur.
+$anahtarDosyasi = Join-Path $env:USERPROFILE "dennis-iam-$KullaniciAdi.env"
+$icerik = "# Dennis IAM erisim anahtari ($KullaniciAdi) - $(Get-Date -Format s)`r`n" +
+          "# Kullandiktan sonra bu dosyayi SIL. Repoya KOYMA, kimseyle paylasma.`r`n" +
+          "AWS_ACCESS_KEY_ID=$id`r`n" +
+          "AWS_SECRET_ACCESS_KEY=$secret`r`n"
+Set-Content -Path $anahtarDosyasi -Value $icerik -Encoding ASCII
+# Dosyayi yalnizca mevcut kullaniciya kisitla (kalitimi kaldir)
+try {
+  icacls $anahtarDosyasi /inheritance:r /grant:r "$($env:USERNAME):F" | Out-Null
+} catch { Uyari "Dosya izni kisitlanamadi; dosyayi elle koruyun: $anahtarDosyasi" }
+# Bellekteki sirri temizle
+$secret = $null; $ak = $null; [System.GC]::Collect()
+
 Write-Host ""
-Write-Host "==================== ERISIM ANAHTARI (BIR KEZ GORUNUR) ====================" -ForegroundColor Cyan
-Write-Host "  AWS_ACCESS_KEY_ID     = $id" -ForegroundColor White
-Write-Host "  AWS_SECRET_ACCESS_KEY = $secret" -ForegroundColor White
-Write-Host "===========================================================================" -ForegroundColor Cyan
+Write-Host "==================== ERISIM ANAHTARI OLUSTURULDU ====================" -ForegroundColor Cyan
+Write-Host "  AWS_ACCESS_KEY_ID = $id" -ForegroundColor White
+Write-Host "  SECRET            = (ekrana BASILMADI; dosyaya yazildi)" -ForegroundColor DarkGray
+Write-Host "  Dosya             = $anahtarDosyasi" -ForegroundColor White
+Write-Host "=====================================================================" -ForegroundColor Cyan
 Write-Host ""
-Bilgi "1) CLI'yi bu kullaniciya gecir:  aws configure"
-Bilgi "   - Access Key / Secret yukaridakiler, region: $Bolge, format: json"
+Bilgi "1) CLI'yi bu kullaniciya gecir (secret'i dosyadan kopyala, sohbete YAPISTIRMA):"
+Bilgi "   aws configure    # region: $Bolge, format: json"
 Bilgi "2) Dogrula:  aws sts get-caller-identity   (Arn artik .../$KullaniciAdi olmali)"
-Bilgi "3) SONRA root anahtarini SIL (konsoldan, cok onemli):"
+Bilgi "3) CLI calisinca anahtar dosyasini SIL:"
+Bilgi "   Remove-Item `"$anahtarDosyasi`""
+Bilgi "4) SONRA root anahtarini SIL (konsoldan, cok onemli):"
 Bilgi "   https://console.aws.amazon.com/iam/home#/security_credentials"
 Bilgi "   > Access keys > root anahtarini Deactivate sonra Delete."
-Bilgi "Not: Secret'i guvenli yere kaydet; repoya KOYMA, kimseyle paylasma."
+Bilgi "Not: Secret ekrana hic basilmadi; yalnizca yukaridaki dosyada. Repoya KOYMA."
