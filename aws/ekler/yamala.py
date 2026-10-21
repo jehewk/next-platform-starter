@@ -839,16 +839,25 @@ def yama_sensor(kaynak):
 
 
 _KUSUR_YARDIMCI = '''
-def _de_kusur_paylasimi(puanlar, tum_isaretler):
-    """DE_KUSUR_PAYLASIMI (yamala.py P): sinif agirliklarini toplami 100 olan
-    yuzdelere cevirir; uretici panelinde kusur paylasimi (ör. %70 uretici /
-    %30 kullanici) onerisi gosterir. Nihai garanti karari insana aittir."""
+def _de_kusur_paylasimi(puan):
+    """DE_KUSUR_PAYLASIMI (yamala.py P): kaynak_analizi'nin 'puan' sozlugundeki
+    sinif agirliklarini, toplami tam 100 olan yuzdelere cevirir (largest-remainder);
+    uretici panelinde kusur paylasimi (ör. %70 uretici / %30 kullanici) onerisi
+    gosterir. Nihai garanti karari insana aittir. Canli 'dis' anahtari standart
+    'dis_etken'e eslenir. Kanit metinleri burada sinif basina ayrilamadigindan
+    (gerekceler duz liste), kusur_paylasimi kanitlarini bos birakir; 'neden'
+    zaten gerekceler alaninda doner."""
+    _harita = {"dis": "dis_etken"}
     _etiket = {"uretim": "Üretici", "kullanim": "Kullanıcı",
                "dis_etken": "Dış etken", "belirsiz": "Belirsiz"}
     _ad = {"uretim": "Üretim/malzeme hatası", "kullanim": "Kullanım/kurulum hatası",
            "dis_etken": "Dış etken", "belirsiz": "Belirsiz"}
     _kapsam = {"uretim": True, "kullanim": False, "dis_etken": False, "belirsiz": None}
-    pozitif = {s: p for s, p in puanlar.items() if p > 0}
+    pozitif = {}
+    for k, v in puan.items():
+        s = _harita.get(k, k)
+        if v and v > 0:
+            pozitif[s] = pozitif.get(s, 0) + v
     toplam = sum(pozitif.values())
     if toplam <= 0:
         return {"yuzdeler": {}, "kusur_paylasimi": [], "kusur_ozeti": ""}
@@ -861,8 +870,7 @@ def _de_kusur_paylasimi(puanlar, tum_isaretler):
     for s in sorted(taban, key=lambda s: taban[s], reverse=True):
         paylasim.append({"sinif": s, "sinif_adi": _ad.get(s, s),
                          "etiket": _etiket.get(s, s), "yuzde": taban[s],
-                         "garanti_kapsami": _kapsam.get(s),
-                         "kanitlar": [i["kanit"] for i in tum_isaretler.get(s, [])]})
+                         "garanti_kapsami": _kapsam.get(s), "kanitlar": []})
     ozet = " / ".join(f"%{p['yuzde']} {p['etiket']}" for p in paylasim)
     return {"yuzdeler": taban, "kusur_paylasimi": paylasim, "kusur_ozeti": ozet}
 '''
@@ -878,10 +886,11 @@ def yama_kusur(kaynak):
     if "DE_KUSUR_PAYLASIMI" in kaynak:
         print("YAMA: kusur paylasimi zaten var.")
         return kaynak, False
+    # Canli kaynak_analizi'nin son donusu: _sonuc(sinif, guven, gerekceler, kanit, cihaz)
     desen = (r"^([ \t]*)return\s+_sonuc\(\s*sinif\s*,\s*guven\s*,"
-             r"\s*gerekceler\s*,\s*kanitlar\s*\)[ \t]*$")
+             r"\s*gerekceler\s*,\s*kanit\s*,\s*cihaz\s*\)[ \t]*$")
     if not re.search(desen, kaynak, re.M):
-        raise YamaAtla("kaynak_analizi'nin 'return _sonuc(sinif, guven, gerekceler, kanitlar)' donusu bulunamadi; kaynak modulu bu Lambda'ya gomulu degil, kusur paylasimi eklenmedi.")
+        raise YamaAtla("kaynak_analizi'nin 'return _sonuc(sinif, guven, gerekceler, kanit, cihaz)' donusu bulunamadi; kaynak modulu bu Lambda'ya gomulu degil, kusur paylasimi eklenmedi.")
 
     # 1) Yardımcı fonksiyonu modül düzeyine (def _sonuc'tan önce) ekle.
     sm = re.search(r"^def\s+_sonuc\s*\(", kaynak, re.M)
@@ -890,13 +899,16 @@ def yama_kusur(kaynak):
     kaynak = kaynak[:sm.start()] + _KUSUR_YARDIMCI.lstrip("\n") + "\n\n" + kaynak[sm.start():]
 
     # 2) Son dönüşü sararak alanları ekle (offsetler kaydığı için yeniden ara).
+    #    'puan' (uretim/kullanim/dis agirliklari) bu noktada kapsamdadir.
+    #    'belirsiz' kararinda yuzde uretme (zayif sinyal yaniltmasin).
     m = re.search(desen, kaynak, re.M)
     g = m.group(1)
     yeni = (
         f"{g}# DE_KUSUR_PAYLASIMI (yamala.py P): kusur paylasimi (yuzdelik) onerisi\n"
-        f"{g}_sn = _sonuc(sinif, guven, gerekceler, kanitlar)\n"
+        f"{g}_sn = _sonuc(sinif, guven, gerekceler, kanit, cihaz)\n"
         f"{g}try:\n"
-        f"{g}    _sn.update(_de_kusur_paylasimi(puanlar, tum_isaretler))\n"
+        f"{g}    if sinif != 'belirsiz':\n"
+        f"{g}        _sn.update(_de_kusur_paylasimi(puan))\n"
         f"{g}except Exception:\n"
         f"{g}    pass\n"
         f"{g}return _sn"

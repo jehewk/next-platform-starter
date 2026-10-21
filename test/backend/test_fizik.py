@@ -790,27 +790,32 @@ def _():
 
 # ══════════════════ 14b. YAMA P: kusur paylaşımı canlıya taşınır ══════════════
 
-# Gömülü kaynak modülünü (yama öncesi hâli) taklit eden minimal stub
+# Canlı Lambda'daki gömülü kaynak_analizi'yi (yama öncesi hâli) taklit eden stub:
+# imza (cihaz, olcumler), 'puan' sözlüğü (uretim/kullanim/dis), 5 argümanlı _sonuc.
 _KAYNAK_STUB = '''
 SINIF_ADI = {"uretim": "Üretim/malzeme hatası", "kullanim": "Kullanım/kurulum hatası",
-             "dis_etken": "Dış etken", "belirsiz": "Belirsiz"}
-GARANTI_YORUM = {"uretim": "x", "kullanim": "y", "dis_etken": "z", "belirsiz": "w"}
+             "dis": "Dış etken", "belirsiz": "Belirsiz"}
+GARANTI_YORUM = {"uretim": "x", "kullanim": "y", "dis": "z", "belirsiz": "w"}
 
 
-def _sonuc(sinif, guven, gerekceler, kanitlar):
-    return {"sinif": sinif, "guven": guven, "garanti_yorum": GARANTI_YORUM[sinif]}
+def _sonuc(sinif, guven, gerekceler, kanit, cihaz):
+    return {"sinif": sinif, "guven": guven, "garanti_yorum": GARANTI_YORUM[sinif],
+            "gerekceler": gerekceler, "kanit": kanit,
+            "cihaz_id": cihaz.get("cihaz_id")}
 
 
-def kaynak_analizi(olcum):
-    puanlar = {"uretim": 0.8, "kullanim": 0.4, "dis_etken": 0.0}
-    tum_isaretler = {"uretim": [{"kanit": "tek hucre kusuru"}],
-                     "kullanim": [{"kanit": "sogukta sarj"}],
-                     "dis_etken": []}
-    sinif = max(puanlar, key=puanlar.get)
-    guven = 0.8
-    gerekceler = ["g"]
-    kanitlar = tum_isaretler[sinif]
-    return _sonuc(sinif, guven, gerekceler, kanitlar)
+def kaynak_analizi(cihaz, olcumler, dd=0.8, kk=0.4):
+    puan = {"uretim": dd, "kullanim": kk, "dis": 0.0}
+    gerekceler = ["tek hucre kusuru", "sogukta sarj"]
+    en_yuksek = max(puan, key=puan.get)
+    deger = puan[en_yuksek]
+    ikinci = sorted(puan.values())[-2]
+    if deger < 0.35 or (deger - ikinci) < 0.15:
+        sinif, guven = "belirsiz", 0.3
+    else:
+        sinif, guven = en_yuksek, 0.8
+    kanit = {}
+    return _sonuc(sinif, guven, gerekceler, kanit, cihaz)
 
 
 def lambda_handler(event, context):
@@ -818,23 +823,33 @@ def lambda_handler(event, context):
 '''
 
 
-@created("yama P: kusur paylaşımı gömülü kaynak_analizi çıktısına eklenir")
+@created("yama P: kusur paylaşımı canlı kaynak_analizi çıktısına eklenir")
 def _():
     yeni, uygulandi = yamala.yama_kusur(_KAYNAK_STUB)
     dogru(uygulandi, "yama uygulanmalı")
     compile(yeni, "test", "exec")
     ns = {}
     exec(yeni, ns)
-    s = ns["kaynak_analizi"]({})
+    s = ns["kaynak_analizi"]({"cihaz_id": "A1"}, [])
     dogru("yuzdeler" in s and s["yuzdeler"], "yuzdeler alanı dolmalı")
     esit(sum(s["yuzdeler"].values()), 100, "yüzdeler toplamı 100")
     esit(s["yuzdeler"], {"uretim": 67, "kullanim": 33}, "0.8/0.4 → %67/%33")
     dogru(s["kusur_ozeti"] and "%" in s["kusur_ozeti"], "özet metni üretilmeli")
-    # eski alanlar korunur
     esit(s["sinif"], "uretim", "mevcut sınıf kararı bozulmamalı")
-    # her payın kanıtı taşınır
-    for p in s["kusur_paylasimi"]:
-        dogru(p["kanitlar"], f"{p['sinif']} payının kanıtı olmalı")
+    # canlı 'dis' anahtarı standart 'dis_etken'e eşlenmeli (0 olduğu için listede yok)
+    dogru(all(p["sinif"] in ("uretim", "kullanim", "dis_etken") for p in s["kusur_paylasimi"]),
+          "sınıf anahtarları standart olmalı")
+
+
+@created("yama P: belirsiz kararda yüzde üretilmez")
+def _():
+    yeni, _u = yamala.yama_kusur(_KAYNAK_STUB)
+    ns = {}
+    exec(yeni, ns)
+    # iki sınıf başa baş → belirsiz
+    s = ns["kaynak_analizi"]({"cihaz_id": "A2"}, [], 0.4, 0.4)
+    esit(s["sinif"], "belirsiz", "başa baş → belirsiz")
+    dogru(not s.get("yuzdeler"), "belirsizde yüzde üretilmemeli")
 
 
 @created("yama P: idempotent — ikinci kez uygulanmaz")
@@ -847,12 +862,13 @@ def _():
 
 @created("yama P: bir hata garanti analizini çökertmez (try/except)")
 def _():
-    yeni, _u = yamala.yama_kusur(_KAYNAK_STUB.replace(
-        'tum_isaretler = {"uretim": [{"kanit": "tek hucre kusuru"}],',
-        'tum_isaretler = {"uretim": "BOZUK",'))
+    yeni, _u = yamala.yama_kusur(_KAYNAK_STUB)
     ns = {}
     exec(yeni, ns)
-    s = ns["kaynak_analizi"]({})
+    def _patla(*a, **k):
+        raise ValueError("test")
+    ns["_de_kusur_paylasimi"] = _patla  # yardımcı patlasa bile analiz dönmeli
+    s = ns["kaynak_analizi"]({"cihaz_id": "A3"}, [])
     dogru(s is not None and s.get("sinif") == "uretim",
           "kusur hesabı patlasa da analiz dönmeli (except yutmalı)")
 

@@ -147,7 +147,7 @@ export default function Arizalar() {
                           || `${KAYNAK_ADI[a.sinif] || "Belirsiz"} · %${Math.round((a.guven || 0) * 100)}`} />
                     </div>
 
-                    {paylasim.length > 0 ? (
+                    {paylasim.length > 0 && (
                       <div className="mt-3">
                         {/* Yüzdelik paylaşım çubuğu */}
                         <div className="flex h-2 w-full overflow-hidden rounded-full bg-cizgi">
@@ -156,7 +156,7 @@ export default function Arizalar() {
                               style={{ width: `${p.yuzde}%` }} title={`${p.etiket} %${p.yuzde}`} />
                           ))}
                         </div>
-                        {/* Sınıf başına yüzde + kapsam + kanıtlar */}
+                        {/* Sınıf başına yüzde + kapsam (+ varsa sınıfa özel kanıt) */}
                         <div className="mt-3 space-y-2.5">
                           {paylasim.map((p) => (
                             <div key={p.sinif} className="text-xs">
@@ -179,8 +179,12 @@ export default function Arizalar() {
                           ))}
                         </div>
                       </div>
-                    ) : (
-                      a.bulgu && <p className="mt-2.5 text-sm leading-relaxed text-metin">{a.bulgu}</p>
+                    )}
+
+                    {/* Neden oluştu (fizik gerekçeleri) — paylaşım kanıtları sınıf
+                        başına ayrı değilse bile burada görünür */}
+                    {a.bulgu && (
+                      <p className="mt-2.5 text-sm leading-relaxed text-metin">{a.bulgu}</p>
                     )}
 
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
