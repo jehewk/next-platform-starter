@@ -788,6 +788,168 @@ def _():
     esit(fizik.temizle_olcum("dict değil"), {}, "dict olmayan girdi {} döner")
 
 
+# ══════════════════ 14b. YAMA P: kusur paylaşımı canlıya taşınır ══════════════
+
+# Gömülü kaynak modülünü (yama öncesi hâli) taklit eden minimal stub
+_KAYNAK_STUB = '''
+SINIF_ADI = {"uretim": "Üretim/malzeme hatası", "kullanim": "Kullanım/kurulum hatası",
+             "dis_etken": "Dış etken", "belirsiz": "Belirsiz"}
+GARANTI_YORUM = {"uretim": "x", "kullanim": "y", "dis_etken": "z", "belirsiz": "w"}
+
+
+def _sonuc(sinif, guven, gerekceler, kanitlar):
+    return {"sinif": sinif, "guven": guven, "garanti_yorum": GARANTI_YORUM[sinif]}
+
+
+def kaynak_analizi(olcum):
+    puanlar = {"uretim": 0.8, "kullanim": 0.4, "dis_etken": 0.0}
+    tum_isaretler = {"uretim": [{"kanit": "tek hucre kusuru"}],
+                     "kullanim": [{"kanit": "sogukta sarj"}],
+                     "dis_etken": []}
+    sinif = max(puanlar, key=puanlar.get)
+    guven = 0.8
+    gerekceler = ["g"]
+    kanitlar = tum_isaretler[sinif]
+    return _sonuc(sinif, guven, gerekceler, kanitlar)
+
+
+def lambda_handler(event, context):
+    return None
+'''
+
+
+@created("yama P: kusur paylaşımı gömülü kaynak_analizi çıktısına eklenir")
+def _():
+    yeni, uygulandi = yamala.yama_kusur(_KAYNAK_STUB)
+    dogru(uygulandi, "yama uygulanmalı")
+    compile(yeni, "test", "exec")
+    ns = {}
+    exec(yeni, ns)
+    s = ns["kaynak_analizi"]({})
+    dogru("yuzdeler" in s and s["yuzdeler"], "yuzdeler alanı dolmalı")
+    esit(sum(s["yuzdeler"].values()), 100, "yüzdeler toplamı 100")
+    esit(s["yuzdeler"], {"uretim": 67, "kullanim": 33}, "0.8/0.4 → %67/%33")
+    dogru(s["kusur_ozeti"] and "%" in s["kusur_ozeti"], "özet metni üretilmeli")
+    # eski alanlar korunur
+    esit(s["sinif"], "uretim", "mevcut sınıf kararı bozulmamalı")
+    # her payın kanıtı taşınır
+    for p in s["kusur_paylasimi"]:
+        dogru(p["kanitlar"], f"{p['sinif']} payının kanıtı olmalı")
+
+
+@created("yama P: idempotent — ikinci kez uygulanmaz")
+def _():
+    yeni, _u = yamala.yama_kusur(_KAYNAK_STUB)
+    tekrar, uygulandi = yamala.yama_kusur(yeni)
+    dogru(not uygulandi, "ikinci uygulamada değişiklik olmamalı")
+    esit(tekrar, yeni, "idempotent: içerik aynı kalmalı")
+
+
+@created("yama P: bir hata garanti analizini çökertmez (try/except)")
+def _():
+    yeni, _u = yamala.yama_kusur(_KAYNAK_STUB.replace(
+        'tum_isaretler = {"uretim": [{"kanit": "tek hucre kusuru"}],',
+        'tum_isaretler = {"uretim": "BOZUK",'))
+    ns = {}
+    exec(yeni, ns)
+    s = ns["kaynak_analizi"]({})
+    dogru(s is not None and s.get("sinif") == "uretim",
+          "kusur hesabı patlasa da analiz dönmeli (except yutmalı)")
+
+
+@created("yama P: kaynak modülü gömülü değilse güvenle atlanır")
+def _():
+    try:
+        yamala.yama_kusur("def lambda_handler(e, c):\n    return None\n")
+        dogru(False, "kaynak yoksa YamaAtla beklenir")
+    except yamala.YamaAtla:
+        pass
+
+
+@created("yama P: depodaki gerçek kaynak.py zaten kusur paylaşımı içerir")
+def _():
+    with open(os.path.join(KOK, "backend", "motor", "kaynak.py"), encoding="utf-8") as f:
+        gercek = f.read()
+    _yeni, uygulandi = yamala.yama_kusur(gercek)
+    dogru(not uygulandi, "depo kopyası zaten DE_KUSUR_PAYLASIMI işareti taşımalı")
+
+
+# ══════════════════ 15. KUSUR PAYLAŞIMI (yüzdelik, üretici paneli) ══════════════════
+
+@created("_yuzdele: ağırlıklar toplamı tam 100 olan yüzdeye çevrilir")
+def _():
+    y = kaynak._yuzdele({"uretim": 0.8, "kullanim": 0.4, "dis_etken": 0.0})
+    esit(sum(y.values()), 100, "yüzdeler toplamı 100 olmalı")
+    dogru("dis_etken" not in y, "ağırlığı sıfır olan sınıf listeye girmez")
+    dogru(y["uretim"] > y["kullanim"], "ağırlıkça büyük sınıf daha yüksek yüzde")
+    esit(y, {"uretim": 67, "kullanim": 33}, "0.8/0.4 → %67/%33")
+
+
+@created("_yuzdele: üçe eşit bölününce de toplam tam 100 (largest-remainder)")
+def _():
+    y = kaynak._yuzdele({"uretim": 1.0, "kullanim": 1.0, "dis_etken": 1.0})
+    esit(sum(y.values()), 100, "1/3 x3 yuvarlansa da toplam 100 olmalı")
+
+
+@created("_yuzdele: boş/sıfır ağırlık → boş sözlük")
+def _():
+    esit(kaynak._yuzdele({"uretim": 0.0, "kullanim": 0.0}), {})
+
+
+@created("kusur paylaşımı: karışık arıza kanıta dayalı yüzde + özet üretir")
+def _():
+    # tek hücre kusuru (üretim) + soğukta şarj (kullanım) birlikte
+    olcum = {
+        "hucreler": [3300, 3301, 3265, 3299],
+        "sicakliklar": [-8, -7, -8], "sicaklik": -8,
+        "akim": 20, "sarjda": True, "kapasite_ah": 100,
+        "temel_fark_mv": 30.0,
+    }
+    sonuc = kaynak.kaynak_analizi(olcum, calisma_gun=150)
+    dogru(sonuc["yuzdeler"], "karışık arızada yüzdeler dolu olmalı")
+    esit(sum(sonuc["yuzdeler"].values()), 100, "yüzdeler toplamı 100")
+    dogru(sonuc["kusur_ozeti"] and "%" in sonuc["kusur_ozeti"],
+          "yüzde içeren bir özet metni üretilmeli")
+    yuzler = [p["yuzde"] for p in sonuc["kusur_paylasimi"]]
+    esit(yuzler, sorted(yuzler, reverse=True), "paylaşım azalan sırada olmalı")
+    for p in sonuc["kusur_paylasimi"]:
+        dogru(p["kanitlar"], f"{p['sinif']} payının kanıtı olmalı")
+        dogru(p["etiket"] in ("Üretici", "Kullanıcı", "Dış etken", "Belirsiz"),
+              "paya kısa taraf etiketi eklenmeli")
+
+
+@created("kusur paylaşımı: garanti kapsamı bayrağı sınıfa göre doğru")
+def _():
+    olcum = {
+        "hucreler": [3300, 3301, 3265, 3299],
+        "sicakliklar": [30, 31, 30], "sicaklik": 30,
+        "akim": -5, "sarjda": False, "temel_fark_mv": 30.0,
+    }
+    sonuc = kaynak.kaynak_analizi(olcum, calisma_gun=150)
+    for p in sonuc["kusur_paylasimi"]:
+        if p["sinif"] == "uretim":
+            esit(p["garanti_kapsami"], True, "üretim → kapsam içi")
+        elif p["sinif"] in ("kullanim", "dis_etken"):
+            esit(p["garanti_kapsami"], False, "kullanım/dış etken → kapsam dışı")
+
+
+@created("kusur paylaşımı: her sonuçta yüzde ya boş ya toplamı 100 (değişmez)")
+def _():
+    senaryolar = [
+        ({"hucreler": [3300, 3301, 3300, 3299], "sicaklik": 25,
+          "kapasite_ah": 100, "temel_fark_mv": 5.0}, 200),
+        ({"hucreler": [3310, 3300, 3295, 3285], "sicaklik": -8,
+          "sicakliklar": [-8, -7, -8], "akim": 20, "sarjda": True,
+          "kapasite_ah": 100, "temel_fark_mv": 8.0}, 400),
+    ]
+    for olcum, gun in senaryolar:
+        s = kaynak.kaynak_analizi(olcum, calisma_gun=gun)
+        t = sum(s["yuzdeler"].values())
+        dogru(t in (0, 100), f"yüzde toplamı 0 ya da 100 olmalı, geldi {t}")
+        if not s["yuzdeler"]:
+            esit(s["kusur_ozeti"], "", "yüzde yoksa özet de boş olmalı")
+
+
 # ══════════════════ çalıştır ══════════════════
 
 if __name__ == "__main__":

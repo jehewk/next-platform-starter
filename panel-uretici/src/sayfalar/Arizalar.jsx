@@ -15,6 +15,14 @@ import { saglikDurumu, sureMetni, KAYNAK_ADI } from "../veri/yardimci";
  */
 const KAYNAK_LIMIT = 8;
 
+// Kusur paylaşımı çubuğunda her sınıfın rengi (durum rengi, anlam değil).
+const KUSUR_RENK = {
+  uretim:    "bg-uyari",
+  kullanim:  "bg-bilgi",
+  dis_etken: "bg-sonuk",
+  belirsiz:  "bg-cizgi",
+};
+
 export default function Arizalar() {
   const { veri: isler, yukleniyor, hata, yenile } = useVeri(mudahaleKuyrugu);
   const { veri: musteriler } = useVeri(musteriListesi);
@@ -126,23 +134,60 @@ export default function Arizalar() {
                 const is = isler.find((x) => x.id === cihazId);
                 const musteri = musteriMap[is?.musteriId];
                 const uretimMi = a.sinif === "uretim";
+                const paylasim = a.kusurPaylasimi || [];
                 return (
                   <div key={cihazId} className="px-4 py-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-baseline gap-2.5">
-                          <span className="font-mono text-sm">{cihazId}</span>
-                          <span className="text-xs text-soluk">{musteri?.ad}</span>
-                        </div>
+                      <div className="flex items-baseline gap-2.5">
+                        <span className="font-mono text-sm">{cihazId}</span>
+                        <span className="text-xs text-soluk">{musteri?.ad}</span>
                       </div>
                       <Rozet durum={uretimMi ? "uyari" : "bilgi"}
-                        cocuk={`${KAYNAK_ADI[a.sinif] || "Belirsiz"} · %${Math.round((a.guven || 0) * 100)}`} />
+                        cocuk={a.kusurOzeti
+                          || `${KAYNAK_ADI[a.sinif] || "Belirsiz"} · %${Math.round((a.guven || 0) * 100)}`} />
                     </div>
-                    {a.bulgu && <p className="mt-2.5 text-sm leading-relaxed text-metin">{a.bulgu}</p>}
-                    <div className="mt-3">
+
+                    {paylasim.length > 0 ? (
+                      <div className="mt-3">
+                        {/* Yüzdelik paylaşım çubuğu */}
+                        <div className="flex h-2 w-full overflow-hidden rounded-full bg-cizgi">
+                          {paylasim.map((p) => (
+                            <div key={p.sinif} className={KUSUR_RENK[p.sinif] || "bg-sonuk"}
+                              style={{ width: `${p.yuzde}%` }} title={`${p.etiket} %${p.yuzde}`} />
+                          ))}
+                        </div>
+                        {/* Sınıf başına yüzde + kapsam + kanıtlar */}
+                        <div className="mt-3 space-y-2.5">
+                          {paylasim.map((p) => (
+                            <div key={p.sinif} className="text-xs">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${KUSUR_RENK[p.sinif] || "bg-sonuk"}`} />
+                                <span className="font-medium text-metin">%{p.yuzde} {p.etiket}</span>
+                                <span className="text-sonuk">
+                                  {p.garantiKapsami === true ? "· garanti kapsamında"
+                                    : p.garantiKapsami === false ? "· kapsam dışı" : ""}
+                                </span>
+                              </div>
+                              {p.kanitlar?.length > 0 && (
+                                <ul className="ml-4 mt-1 list-disc space-y-0.5 text-soluk">
+                                  {p.kanitlar.map((k, i) => (
+                                    <li key={i} className="leading-relaxed">{k}</li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      a.bulgu && <p className="mt-2.5 text-sm leading-relaxed text-metin">{a.bulgu}</p>
+                    )}
+
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                       <span className={`text-xs ${uretimMi ? "text-uyari" : "text-soluk"}`}>
                         {a.garantiYorum || (uretimMi ? "garanti değerlendirmesine uygun" : "garanti dışı değerlendirilebilir")}
                       </span>
+                      <span className="text-[11px] text-sonuk">teknik öneri · nihai karar üreticide</span>
                     </div>
                   </div>
                 );

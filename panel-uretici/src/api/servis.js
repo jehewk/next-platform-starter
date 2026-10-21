@@ -306,6 +306,15 @@ export async function kaynakAnalizi(cihazId) {
     bulgu: (analiz.gerekceler || []).join(" "),
     gerekceler: analiz.gerekceler || [],
     garantiYorum: analiz.garanti_yorum,
+    // Kusur paylaşımı (öneri; nihai karar üreticide):
+    kusurOzeti: analiz.kusur_ozeti || "",
+    kusurPaylasimi: (analiz.kusur_paylasimi || []).map((p) => ({
+      sinif: p.sinif,
+      etiket: p.etiket,
+      yuzde: p.yuzde,
+      garantiKapsami: p.garanti_kapsami,
+      kanitlar: p.kanitlar || [],
+    })),
   };
 }
 

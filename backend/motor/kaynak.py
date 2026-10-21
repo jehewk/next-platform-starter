@@ -32,6 +32,43 @@ GARANTI_YORUM = {
     "belirsiz":  "Kanıt yetersiz; saha incelemesi önerilir.",
 }
 
+# Kusur paylaşımında kullanılan kısa taraf etiketleri ("%70 Üretici" gibi).
+KUSUR_ETIKET = {
+    "uretim":    "Üretici",
+    "kullanim":  "Kullanıcı",
+    "dis_etken": "Dış etken",
+    "belirsiz":  "Belirsiz",
+}
+
+# Her sınıfın garanti kapsamına girip girmediği (üretici paneli için).
+GARANTI_KAPSAMI = {
+    "uretim":    True,    # üretim/malzeme hatası → kapsam içi
+    "kullanim":  False,   # yanlış kullanım/kurulum → kapsam dışı
+    "dis_etken": False,   # dış etken → kapsam dışı (ürün kusuru değil)
+    "belirsiz":  None,    # kanıt yetersiz → karar yok
+}
+
+
+def _yuzdele(puanlar):
+    """Sınıf ağırlık toplamlarını, toplamı tam 100 olan yüzdelere çevirir.
+
+    En büyük kalan (largest-remainder) yöntemiyle yuvarlar; yuvarlama
+    nedeniyle yüzdelerin toplamı 99 ya da 101 olmaz, hep 100 olur.
+    Ağırlığı sıfır olan sınıf listeye girmez.
+    """
+    pozitif = {s: p for s, p in puanlar.items() if p > 0}
+    toplam = sum(pozitif.values())
+    if toplam <= 0:
+        return {}
+    ham = {s: 100.0 * p / toplam for s, p in pozitif.items()}
+    taban = {s: int(v) for s, v in ham.items()}
+    kalan = 100 - sum(taban.values())
+    # Artan birimleri en büyük ondalık kesire sahip sınıflara dağıt.
+    sirali = sorted(ham, key=lambda s: ham[s] - taban[s], reverse=True)
+    for s in sirali[:kalan]:
+        taban[s] += 1
+    return taban
+
 
 # ══════════════════ KULLANIM İŞARETLERİ ══════════════════
 
@@ -242,7 +279,8 @@ def _dis_etken_isaretleri(olcum, degerlendirme):
 
 # ══════════════════ SONUÇ ══════════════════
 
-def _sonuc(sinif, guven, gerekceler, kanitlar):
+def _sonuc(sinif, guven, gerekceler, kanitlar,
+           yuzdeler=None, kusur_paylasimi=None, kusur_ozeti=""):
     return {
         "sinif":         sinif,
         "sinif_adi":     SINIF_ADI[sinif],
@@ -250,6 +288,10 @@ def _sonuc(sinif, guven, gerekceler, kanitlar):
         "garanti_yorum": GARANTI_YORUM[sinif],
         "gerekceler":    gerekceler,
         "kanit":         kanitlar,
+        # Kusur paylaşımı (üretici paneli için öneri; nihai karar insanda):
+        "yuzdeler":        yuzdeler or {},        # {"uretim": 70, "kullanim": 30}
+        "kusur_paylasimi": kusur_paylasimi or [], # yüzdeye göre azalan, kanıtlı
+        "kusur_ozeti":     kusur_ozeti,           # "%70 Üretici / %30 Kullanıcı"
     }
 
 
@@ -303,4 +345,25 @@ def kaynak_analizi(olcum, degerlendirme=None, calisma_gun=None):
                 f"Not: {SINIF_ADI[s].lower()} yönünde de işaret var "
                 f"({len(isaretler)} kanıt); güven buna göre düşürüldü.")
 
-    return _sonuc(sinif, guven, gerekceler, kanitlar)
+    # ── Kusur paylaşımı (yüzdelik) ── DE_KUSUR_PAYLASIMI ─────────────────
+    # (işaret: yamala.py P yaması bu modülün canlıda zaten güncel olduğunu
+    #  bu satırdan anlar, çift uygulamaz.)
+    # Her sınıfın topladığı ağırlık, toplamı 100 olan yüzdelere çevrilir;
+    # böylece tek bir "suçlu" yerine kanıta dayalı bir paylaşım çıkar
+    # (ör. %70 üretici / %30 kullanıcı). Nihai garanti kararı Dennis'e
+    # aittir; burası yalnızca kanıtlı bir öneridir.
+    yuzdeler = _yuzdele(puanlar)
+    paylasim = []
+    for s in sorted(yuzdeler, key=lambda s: yuzdeler[s], reverse=True):
+        paylasim.append({
+            "sinif":           s,
+            "sinif_adi":       SINIF_ADI[s],
+            "etiket":          KUSUR_ETIKET[s],
+            "yuzde":           yuzdeler[s],
+            "garanti_kapsami": GARANTI_KAPSAMI[s],
+            "kanitlar":        [i["kanit"] for i in tum_isaretler[s]],
+        })
+    ozet = " / ".join(f"%{p['yuzde']} {p['etiket']}" for p in paylasim)
+
+    return _sonuc(sinif, guven, gerekceler, kanitlar,
+                  yuzdeler=yuzdeler, kusur_paylasimi=paylasim, kusur_ozeti=ozet)
