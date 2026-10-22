@@ -123,3 +123,30 @@ export function mekanizmaAdi(anahtar) {
   const s = String(anahtar).replace(/_/g, " ");
   return s.charAt(0).toLocaleUpperCase("tr") + s.slice(1);
 }
+
+/**
+ * Mekanizma → önerilen işlem (mühendis çözüm yolu).
+ *
+ * Deterministik, fizik temelli; "model dedi" değil. Teşhis kartında ve
+ * ileride fişte gösterilir. Bilinmeyen mekanizmada genel bir öneri döner.
+ */
+export const COZUM_ONERI = {
+  hucre_dengesizligi:  "Tam şarj (absorbsiyon dahil) yapıp BMS pasif dengelemesine zaman tanıyın. Dengelenmezse zayıf hücreyi ve hücre bağlantılarını (bus-bar torku) kontrol edin.",
+  ic_direnc:           "İç direnç artışı ömür sonuna işaret eder. Kapasite testi yapın; sapma büyükse hücre/paket değişimini planlayın.",
+  cevrim_yorulmasi:    "Çevrim yorulması normal yaşlanmadır. Derin deşarjı azaltın, günlük çevrim derinliğini ve kullanım profilini gözden geçirin.",
+  termal_yaslanma:     "Yüksek sıcaklık yaşlanmayı hızlandırır. Havalandırma/soğutmayı iyileştirin, montaj yerini (güneş/ısı kaynağı) kontrol edin.",
+  termal_derating:     "Sıcaklık gücü düşürüyor. Ortam sıcaklığını ve soğutmayı iyileştirin; yükü sıcak saatlerde azaltın.",
+  guc_kisitlama:       "Güç kısıtı koruma/sıcaklık kaynaklı. Yük dağılımını ve soğutmayı gözden geçirin.",
+  kondansator_esr:     "DC bara kondansatör ESR'si yükselmiş. Kondansatör değişimini servis planına alın.",
+  kondansator_yas:     "Kondansatör yaşlanması başlamış. Servis aralığında değişim planlayın.",
+  sogutma_verimi:      "Soğutma verimi düşük. Fanı, hava yolunu ve toz/tıkanıklığı kontrol edin.",
+  fan_verimi:          "Soğutma fanı zayıf. Fanı test edip gerekiyorsa değiştirin.",
+  igbt_termal_yorulma: "IGBT termal yorulması. Yük döngüsünü ve soğutmayı kontrol edin; modül servisini planlayın.",
+  kopru_dengesizligi:  "Faz kolu dengesizliği. Sürücü sinyallerini, bağlantıları ve modül dengesini kontrol edin.",
+};
+
+export function cozumOnerisi(mekanizma) {
+  if (!mekanizma) return "";
+  return COZUM_ONERI[mekanizma]
+    || "Ölçüm eğilimini izleyin; sapma sürerse saha incelemesi ve bileşen kontrolü planlayın.";
+}

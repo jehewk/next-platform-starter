@@ -5,7 +5,11 @@ import { cihazBul, musteriBul, akuDetayUyarla, cihazGecmisi, kaynakAnalizi } fro
 import { Rozet } from "../bilesenler/Rozet";
 import {
   saglikDurumu, DURUM_ADI, durumRengi, garantiDurumu, tarihTR, sureMetni, onceMetni, DURUM_YAZI, KAYNAK_ADI,
+  cozumOnerisi, mekanizmaAdi,
 } from "../veri/yardimci";
+
+// Kusur paylaşımı çubuğunda sınıf renkleri (durum rengi, anlam değil).
+const KUSUR_RENK = { uretim: "bg-uyari", kullanim: "bg-bilgi", dis_etken: "bg-sonuk", belirsiz: "bg-cizgi" };
 import { Iskelet, HataKutusu } from "../bilesenler/VeriDurumu";
 import { useGrafikRenkleri, Ipucu } from "../bilesenler/Grafik";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from "recharts";
@@ -143,22 +147,70 @@ export default function AkuDetay() {
       {kaynak && kaynak.sinif && (aku.tahmin || kaynak.sinif !== "belirsiz") && (
         <div className="rounded-lg border border-cizgi bg-panel px-5 py-4">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold">Arıza kaynağı analizi</h3>
+            <h3 className="text-sm font-semibold">Arıza Teşhisi</h3>
             <Rozet durum={kaynak.sinif === "uretim" ? "uyari" : "bilgi"}
-              cocuk={`${KAYNAK_ADI[kaynak.sinif] || kaynak.sinif} · %${Math.round((kaynak.guven || 0) * 100)}`} />
+              cocuk={kaynak.kusurOzeti
+                || `${KAYNAK_ADI[kaynak.sinif] || kaynak.sinif} · %${Math.round((kaynak.guven || 0) * 100)}`} />
           </div>
-          {kaynak.gerekceler?.length > 0 && (
-            <ul className="mt-2.5 space-y-1 text-sm text-soluk">
-              {kaynak.gerekceler.map((g, i) => (
-                <li key={i} className="flex gap-2"><span className="shrink-0 text-sonuk">·</span>{g}</li>
-              ))}
-            </ul>
+
+          {/* Mekanizma (mühendis başlığı) */}
+          {aku.tahmin?.mekanizma && (
+            <p className="mt-2 text-sm">
+              <span className="text-soluk">Mekanizma: </span>
+              <span className="font-medium text-metin">{mekanizmaAdi(aku.tahmin.mekanizma)}</span>
+            </p>
           )}
+
+          {/* Neden (kanıt) */}
+          {kaynak.gerekceler?.length > 0 && (
+            <div className="mt-2.5">
+              <div className="text-xs font-medium text-soluk">Neden (kanıt)</div>
+              <ul className="mt-1 space-y-1 text-sm text-soluk">
+                {kaynak.gerekceler.map((g, i) => (
+                  <li key={i} className="flex gap-2"><span className="shrink-0 text-sonuk">·</span>{g}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Kusur paylaşımı (%üretici/%kullanıcı) */}
+          {kaynak.kusurPaylasimi?.length > 0 && (
+            <div className="mt-3 border-t border-cizgi pt-3">
+              <div className="mb-2 text-xs font-medium text-soluk">Kusur paylaşımı</div>
+              <div className="flex h-2 w-full overflow-hidden rounded-full bg-cizgi">
+                {kaynak.kusurPaylasimi.map((p) => (
+                  <div key={p.sinif} className={KUSUR_RENK[p.sinif] || "bg-sonuk"}
+                    style={{ width: `${p.yuzde}%` }} title={`${p.etiket} %${p.yuzde}`} />
+                ))}
+              </div>
+              <div className="mt-2 space-y-1">
+                {kaynak.kusurPaylasimi.map((p) => (
+                  <div key={p.sinif} className="flex flex-wrap items-center gap-x-2 text-xs">
+                    <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${KUSUR_RENK[p.sinif] || "bg-sonuk"}`} />
+                    <span className="font-medium text-metin">%{p.yuzde} {p.etiket}</span>
+                    <span className="text-sonuk">
+                      {p.garantiKapsami === true ? "· garanti kapsamında"
+                        : p.garantiKapsami === false ? "· kapsam dışı" : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Çözüm yolu (önerilen işlem) */}
+          {aku.tahmin?.mekanizma && (
+            <div className="mt-3 border-t border-cizgi pt-3">
+              <div className="text-xs font-medium text-soluk">Önerilen işlem (çözüm)</div>
+              <p className="mt-1 text-sm leading-relaxed text-metin">{cozumOnerisi(aku.tahmin.mekanizma)}</p>
+            </div>
+          )}
+
           {kaynak.garantiYorum && (
             <p className="mt-3 border-t border-cizgi pt-3 text-sm text-soluk">{kaynak.garantiYorum}</p>
           )}
           <p className="mt-2 text-2xs leading-relaxed text-sonuk">
-            Bu analiz ölçüm verisine dayalı bir değerlendirmedir; garanti kararı üreticiye aittir.
+            Bu teşhis ölçüm verisine dayalı bir öneridir; garanti kararı üreticiye aittir.
           </p>
         </div>
       )}

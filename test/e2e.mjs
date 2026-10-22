@@ -191,6 +191,19 @@ try {
     kontrol(`${on}: kusur yüzdeleri toplamı 100`,
       sayilar.length >= 2 && sayilar[0] + sayilar[1] === 100);
 
+    // Arıza Teşhisi kartı (cihaz detayı): mekanizma + kusur paylaşımı + çözüm
+    const teshisHref = await s.locator('a[href^="/aku/"]').first().getAttribute("href");
+    await s.goto(U + teshisHref); await bekle(s, 1400);
+    await foto(s, `${on}-04d-teshis`); await tasmaYok(s, `${on} teşhis`);
+    kontrol(`${on}: arıza teşhisi kartı`,
+      await gorunur(s.getByRole("heading", { name: "Arıza Teşhisi" })));
+    kontrol(`${on}: teşhiste mekanizma`, (await s.getByText("Mekanizma:").count()) > 0);
+    kontrol(`${on}: teşhiste çözüm yolu (önerilen işlem)`,
+      (await s.getByText("Önerilen işlem (çözüm)").count()) > 0);
+    kontrol(`${on}: teşhiste kusur paylaşımı`, (await s.getByText(/Kusur paylaşımı/).count()) > 0);
+    kontrol(`${on}: "asistana açıkla" butonu`,
+      (await s.getByRole("button", { name: /asistana açıkla/ }).count()) > 0);
+
     // Garanti fişi (yazdır→PDF belgesi) — id'yi listeden gerçek bir cihazdan al
     await s.goto(U + "/akuler"); await bekle(s);
     const akuHref = await s.locator('a[href^="/aku/"]').first().getAttribute("href");
