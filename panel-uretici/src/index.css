@@ -137,6 +137,21 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
   }
 }
 
+/* ── Yazdırma: yalnızca garanti fişi (.fis-belge) basılır ── */
+/* Fiş dışındaki her şey (menü, üst çubuk, butonlar) gizlenir; fiş beyaz
+   zemin + koyu metinle, tema fark etmeksizin net basılır. */
+@media print {
+  body { background: #fff !important; }
+  body * { visibility: hidden !important; }
+  .fis-belge, .fis-belge * { visibility: visible !important; }
+  .fis-belge {
+    position: absolute; left: 0; top: 0; width: 100%;
+    margin: 0; padding: 0; box-shadow: none !important;
+  }
+  .yazdirma-gizle { display: none !important; }
+  @page { margin: 16mm; }
+}
+
 /* ── Açılış (Intro.tsx) ── */
 .imlec-beyaz {
   display: inline-block;

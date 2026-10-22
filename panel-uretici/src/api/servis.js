@@ -22,6 +22,7 @@ function cihazUyarla(c) {
     durum: c.durum,
     saglik: c.saglik ?? null,
     uretim: c.uretim_tarihi,
+    satis: c.satis_tarihi ?? null,
     kurulum: c.kurulum_tarihi,
     kapasiteAh: c.kapasite_ah,
     hucreSayisi: c.hucre_sayisi,

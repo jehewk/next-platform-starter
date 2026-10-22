@@ -99,6 +99,9 @@ for (const p of PARTILER) {
       durum,
       saglik,
       uretim_tarihi: gunOnce(p.gun + tam(0, 12)),
+      // Sabit ofset (RNG çağırmaz) — deterministik fixture dizisi kaymasın;
+      // üretimden sonra, kurulumdan önce bir satış tarihi verir.
+      satis_tarihi: sahada ? gunOnce(p.gun - 10) : null,
       kurulum_tarihi: sahada ? gunOnce(p.gun - tam(20, 60)) : null,
       kapasite_ah: p.tip === "aku" ? 100 : null,
       hucre_sayisi: p.tip === "aku" ? 16 : null,

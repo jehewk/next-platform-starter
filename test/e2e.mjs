@@ -191,6 +191,21 @@ try {
     kontrol(`${on}: kusur yüzdeleri toplamı 100`,
       sayilar.length >= 2 && sayilar[0] + sayilar[1] === 100);
 
+    // Garanti fişi (yazdır→PDF belgesi) — id'yi listeden gerçek bir cihazdan al
+    await s.goto(U + "/akuler"); await bekle(s);
+    const akuHref = await s.locator('a[href^="/aku/"]').first().getAttribute("href");
+    const fisId = (akuHref || "").split("/").pop() || "AKU-D23-0041";
+    await s.goto(U + `/garanti-fisi/${fisId}`); await bekle(s, 1200);
+    await foto(s, `${on}-04c-garanti-fisi`); await tasmaYok(s, `${on} garanti fişi`);
+    kontrol(`${on}: garanti fişi başlığı`,
+      await gorunur(s.getByRole("heading", { name: "Garanti Değerlendirme Fişi" })));
+    kontrol(`${on}: fiş PDF/yazdır butonu`,
+      await gorunur(s.getByRole("button", { name: /PDF indir|Yazdır/ })));
+    kontrol(`${on}: fişte satış tarihi alanı`, (await s.getByText("Satış Tarihi").count()) > 0);
+    kontrol(`${on}: fişte müşteri/kullanım yeri`, (await s.getByText("Müşteri / Kullanım Yeri").count()) > 0);
+    kontrol(`${on}: fişte kusur paylaşımı bölümü`, (await s.getByText("Kusur Paylaşımı (öneri)").count()) > 0);
+    kontrol(`${on}: fişte NaN/undefined yok`, !/NaN|undefined/.test(await s.locator(".fis-belge").innerText()));
+
     await s.goto(U + "/akuler"); await bekle(s);
     await foto(s, `${on}-05-akuler`); await tasmaYok(s, `${on} aküler`);
     await s.goto(U + "/uretim"); await bekle(s); await tasmaYok(s, `${on} üretim`);

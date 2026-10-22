@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { ChevronLeft, Cpu, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Cpu, AlertTriangle, FileText } from "lucide-react";
 import { Kart, Olcum, OlcumSeridi } from "../bilesenler/Kart";
 import { useGrafikRenkleri, Ipucu } from "../bilesenler/Grafik";
 import { Rozet, SaglikCubugu } from "../bilesenler/Rozet";
@@ -72,7 +72,13 @@ export default function InverterDetay() {
               </p>
             </div>
           </div>
-          <Rozet durum={durumRengi(c.durum)} cocuk={DURUM_ADI[c.durum]} />
+          <div className="flex items-center gap-2.5">
+            <Link to={`/garanti-fisi/${c.id}`}
+              className="inline-flex items-center gap-1.5 rounded-md border border-cizgi bg-panel px-2.5 py-1.5 text-xs text-soluk transition-colors hover:border-soluk/50 hover:text-metin">
+              <FileText size={13} /> Garanti fişi
+            </Link>
+            <Rozet durum={durumRengi(c.durum)} cocuk={DURUM_ADI[c.durum]} />
+          </div>
         </div>
       </div>
 

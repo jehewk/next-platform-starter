@@ -1,5 +1,5 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { ChevronLeft, AlertTriangle, Clock, Sparkles } from "lucide-react";
+import { ChevronLeft, AlertTriangle, Clock, Sparkles, FileText } from "lucide-react";
 import { useVeri } from "../api/useVeri";
 import { cihazBul, musteriBul, akuDetayUyarla, cihazGecmisi, kaynakAnalizi } from "../api/servis";
 import { Rozet } from "../bilesenler/Rozet";
@@ -69,7 +69,13 @@ export default function AkuDetay() {
               {d.veriYok ? "Cihaz henüz ölçüm göndermedi" : olcumZamani ? `Son ölçüm ${onceMetni(olcumZamani)}` : "Son ölçüm alındı"}
             </p>
           </div>
-          <DurumEtiketi durum={durumRengi(aku.durum)} metin={DURUM_ADI[aku.durum]} />
+          <div className="flex items-center gap-2.5">
+            <Link to={`/garanti-fisi/${aku.id}`}
+              className="inline-flex items-center gap-1.5 rounded-md border border-cizgi bg-panel px-2.5 py-1.5 text-xs text-soluk transition-colors hover:border-soluk/50 hover:text-metin">
+              <FileText size={13} /> Garanti fişi
+            </Link>
+            <DurumEtiketi durum={durumRengi(aku.durum)} metin={DURUM_ADI[aku.durum]} />
+          </div>
         </div>
       </div>
 

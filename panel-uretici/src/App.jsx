@@ -27,6 +27,7 @@ const AkuDetay      = lazy(() => import("./sayfalar/AkuDetay"));
 const InverterDetay = lazy(() => import("./sayfalar/InverterDetay"));
 const Arizalar      = lazy(() => import("./sayfalar/Arizalar"));
 const Garanti       = lazy(() => import("./sayfalar/Garanti"));
+const GarantiFisi   = lazy(() => import("./sayfalar/GarantiFisi"));
 const Uretim        = lazy(() => import("./sayfalar/Uretim"));
 const Asistan       = lazy(() => import("./sayfalar/Asistan"));
 const Ayarlar       = lazy(() => import("./sayfalar/Ayarlar"));
@@ -121,6 +122,7 @@ function Uygulama() {
               <Route path="/inverter/:id" element={<InverterDetay />} />
               <Route path="/arizalar"     element={<Arizalar />} />
               <Route path="/garanti"      element={<Garanti />} />
+              <Route path="/garanti-fisi/:id" element={<GarantiFisi />} />
               <Route path="/uretim"       element={<Uretim />} />
               <Route path="/asistan"      element={<Asistan />} />
               <Route path="/ayarlar"      element={<Ayarlar />} />
