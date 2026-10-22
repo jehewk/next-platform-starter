@@ -373,13 +373,30 @@ export async function sahteIstek(yol, govde = {}, token = "") {
       // Sonuç cihaz başına sabit olsun: sayfa her açıldığında değişmesin.
       const h = [...c.cihaz_id].reduce((t, ch) => t + ch.charCodeAt(0), 0);
       const uretim = c.parti === "D24-A02" || c.oncelikli === "kondansator_esr" || h % 3 === 0;
+      const sinif = uretim ? "uretim" : h % 2 ? "kullanim" : "dis";
+      // Kusur paylaşımı (canlı yama P çıktısıyla aynı biçim): baskın sınıf + ikincil.
+      const ETIKET = { uretim: "Üretici", kullanim: "Kullanıcı", dis_etken: "Dış etken" };
+      const AD = { uretim: "Üretim/malzeme hatası", kullanim: "Kullanım/kurulum hatası", dis_etken: "Dış etken" };
+      const KAPSAM = { uretim: true, kullanim: false, dis_etken: false };
+      const std = (x) => (x === "dis" ? "dis_etken" : x);
+      const baskin = std(sinif);
+      const ikincil = baskin === "uretim" ? "kullanim" : "uretim";
+      const bk = 55 + (h % 30);                 // baskın yüzde 55–84, cihaz başına sabit
+      const yuzdeler = { [baskin]: bk, [ikincil]: 100 - bk };
+      const paylasim = [baskin, ikincil].map((srf) => ({
+        sinif: srf, sinif_adi: AD[srf], etiket: ETIKET[srf],
+        yuzde: yuzdeler[srf], garanti_kapsami: KAPSAM[srf], kanitlar: [],
+      }));
       return { analiz: {
-        sinif: uretim ? "uretim" : h % 2 ? "kullanim" : "dis",
+        sinif,
         guven: Number((0.62 + (h % 30) / 100).toFixed(2)),
         gerekceler: [c.ozet, uretim
           ? "Aynı partideki diğer cihazlarda benzer eğilim var."
           : "Bozulma, kullanım profilindeki değişiklikle eş zamanlı başladı."],
         garanti_yorum: uretim ? "Garanti değerlendirmesine uygun" : "Garanti dışı değerlendirilebilir",
+        yuzdeler,
+        kusur_paylasimi: paylasim,
+        kusur_ozeti: paylasim.map((p) => `%${p.yuzde} ${p.etiket}`).join(" / "),
       } };
     }
     case "/de/kayit/liste":

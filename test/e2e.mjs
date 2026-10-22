@@ -173,6 +173,24 @@ try {
     kontrol(`${on}: garanti kararı kaydedildi`, await gorunur(s.getByText(/onaylandı/).first()));
     await bekle(s); await tasmaYok(s, `${on} garanti`);
 
+    // Arıza Kaynağı Analizi — kanıtlı kusur paylaşımı (yüzdelik)
+    await s.goto(U + "/arizalar"); await bekle(s, 1800);
+    await foto(s, `${on}-04b-arizalar`); await tasmaYok(s, `${on} arızalar`);
+    kontrol(`${on}: arızalarda NaN/undefined yok`, !/NaN|undefined/.test(await s.locator("main").innerText()));
+    kontrol(`${on}: arıza kaynağı analizi kartı`, await gorunur(s.getByText("Arıza Kaynağı Analizi")));
+    kontrol(`${on}: kusur paylaşımı yüzdesi (%X Üretici/Kullanıcı)`,
+      (await s.getByText(/%\d+\s+(Üretici|Kullanıcı|Dış etken)/).count()) > 0);
+    kontrol(`${on}: garanti kapsamı etiketi`,
+      (await s.getByText(/garanti kapsamında|kapsam dışı/).count()) > 0);
+    kontrol(`${on}: "nihai karar üreticide" notu`,
+      (await s.getByText(/nihai karar üreticide/).count()) > 0);
+    // Yüzdeler toplamı 100 — ilk karttaki birleşik özet rozetinden oku
+    // ("%70 Üretici / %30 Kullanıcı"): iki sayıyı çıkarıp topla.
+    const ozetMetin = await s.getByText(/%\d+[^/]*\/\s*%\d+/).first().innerText();
+    const sayilar = [...ozetMetin.matchAll(/%(\d+)/g)].map((m) => Number(m[1]));
+    kontrol(`${on}: kusur yüzdeleri toplamı 100`,
+      sayilar.length >= 2 && sayilar[0] + sayilar[1] === 100);
+
     await s.goto(U + "/akuler"); await bekle(s);
     await foto(s, `${on}-05-akuler`); await tasmaYok(s, `${on} aküler`);
     await s.goto(U + "/uretim"); await bekle(s); await tasmaYok(s, `${on} üretim`);
