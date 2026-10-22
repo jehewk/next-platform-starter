@@ -892,31 +892,37 @@ def _():
 
 # ══════════════════ 14c. YAMA Q: satış tarihi (kurulum/tanit eşleşmesi) ════════
 
+# Canlı aktivasyon (satış anı) her yerde 'kurulum_tarihi = :k' (=şimdi) yazar.
 _SATIS_STUB = '''
 from datetime import datetime, timezone
 
 dynamodb = None
 
-def _de_kurulum_tanit(body):
-    cid = body["cihaz_id"]
-    mid = body["musteri_id"]
-    ct = dynamodb.Table("x")
-    ct.update_item(Key={'cihaz_id': cid},
-                   UpdateExpression='SET musteri_id = :m, durum = :d',
-                   ExpressionAttributeValues={':m': mid, ':d': 'aktif'})
-    return 200, {'ok': True}
+def _de_aktive(cihaz_id, musteri_id):
+    simdi = datetime.now(timezone.utc).replace(tzinfo=None)
+    dynamodb.Table("x").update_item(
+        Key={'cihaz_id': cihaz_id},
+        UpdateExpression='SET musteri_id = :m, durum = :d, kurulum_tarihi = :k',
+        ExpressionAttributeValues={':m': musteri_id, ':d': 'aktif', ':k': simdi.isoformat()})
+    return 200
 '''
 
 
-@created("yama Q: eşleşmede satış tarihi damgası eklenir (if_not_exists)")
+@created("yama Q: aktivasyonda satış tarihi damgası eklenir (if_not_exists, :k)")
 def _():
     yeni, uygulandi = yamala.yama_satis(_SATIS_STUB)
     dogru(uygulandi, "yama uygulanmalı")
     compile(yeni, "test", "exec")
-    dogru("satis_tarihi = if_not_exists(satis_tarihi, :s)" in yeni,
-          "satış tarihi yalnız ilk eşleşmede yazılmalı")
-    dogru("DE_SATIS_TARIHI" in yeni, "işaret eklenmeli")
-    dogru("datetime.now(timezone.utc)" in yeni, ":s değeri ISO zaman olmalı")
+    dogru("kurulum_tarihi = :k, satis_tarihi = if_not_exists(satis_tarihi, :k)" in yeni,
+          "satış tarihi, kurulum anıyla aynı :k değerinden if_not_exists ile yazılmalı")
+
+
+@created("yama Q: birden çok aktivasyon noktasının hepsi damgalanır")
+def _():
+    iki = _SATIS_STUB + _SATIS_STUB.replace("_de_aktive", "_de_aktive2")
+    yeni, _u = yamala.yama_satis(iki)
+    esit(yeni.count("satis_tarihi = if_not_exists(satis_tarihi, :k)"), 2,
+         "her aktivasyon noktası damgalanmalı")
 
 
 @created("yama Q: idempotent — ikinci kez uygulanmaz")
@@ -927,20 +933,21 @@ def _():
     esit(tekrar, yeni, "idempotent: içerik aynı kalmalı")
 
 
-@created("yama Q: kurulum eşleşmesi gömülü değilse güvenle atlanır")
+@created("yama Q: aktivasyon akışı gömülü değilse güvenle atlanır")
 def _():
     try:
-        yamala.yama_satis("from datetime import datetime, timezone\n")
-        dogru(False, "eşleşme yoksa YamaAtla beklenir")
+        yamala.yama_satis("def lambda_handler(e, c):\n    return None\n")
+        dogru(False, "aktivasyon yoksa YamaAtla beklenir")
     except yamala.YamaAtla:
         pass
 
 
-@created("yama Q: depo kaynağı (_KURULUM_YARDIMCI) zaten satış damgası içerir")
+@created("yama Q: depo kaynağı zaten satış damgası içerir (çift uygulanmaz)")
 def _():
     with open(os.path.join(KOK, "aws", "ekler", "yamala.py"), encoding="utf-8") as f:
         src = f.read()
-    dogru("DE_SATIS_TARIHI" in src, "kaynak yardımcı zaten DE_SATIS_TARIHI taşımalı")
+    _y, uygulandi = yamala.yama_satis(src)
+    dogru(not uygulandi, "kaynak zaten if_not_exists(satis_tarihi) taşımalı")
 
 
 # ══════════════════ 15. KUSUR PAYLAŞIMI (yüzdelik, üretici paneli) ══════════════════

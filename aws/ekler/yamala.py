@@ -1116,23 +1116,21 @@ def yama_satis(kaynak):
     (uretici tesisinden cikip musteri WiFi'sine gecis). satis_tarihi yalniz
     ilk eslesmede yazilir (if_not_exists). Canlida zaten duran eski
     _de_kurulum_tanit update_item'ini gunceller. Döner: (yeni, uygulandi)."""
-    if "DE_SATIS_TARIHI" in kaynak:
+    # Idempotency: satis damgasi zaten varsa dokunma (hem canli ':k' hem repo
+    # ':s' bicimini yakalar).
+    if "if_not_exists(satis_tarihi" in kaynak:
         print("YAMA: satis tarihi damgasi zaten var.")
         return kaynak, False
-    # Virgul degisime dahildir: yoksa isaret yorumu orijinal virgulun onune
-    # gecip onu yorumun icinde birakir (sozdizimi bozulur).
-    eski_ue = "UpdateExpression='SET musteri_id = :m, durum = :d',"
-    eski_ev = "ExpressionAttributeValues={':m': mid, ':d': 'aktif'})"
-    if eski_ue not in kaynak or eski_ev not in kaynak:
-        raise YamaAtla("kurulum/tanit eslesme update_item'i bulunamadi; satis tarihi eklenmedi (kurulum ucu gomulu degil ya da yapi farkli).")
-    if "from datetime import" not in kaynak:
-        raise YamaAtla("datetime import bulunamadi; satis tarihi damgasi eklenemedi.")
-    yeni_ue = ("UpdateExpression='SET musteri_id = :m, durum = :d, "
-               "satis_tarihi = if_not_exists(satis_tarihi, :s)',  # DE_SATIS_TARIHI")
-    yeni_ev = ("ExpressionAttributeValues={':m': mid, ':d': 'aktif', "
-               "':s': datetime.now(timezone.utc).replace(tzinfo=None).isoformat()})")
-    kaynak = kaynak.replace(eski_ue, yeni_ue, 1).replace(eski_ev, yeni_ev, 1)
-    print("YAMA: satis tarihi damgasi eklendi (kurulum/tanit).")
+    # Canlida cihaz-musteri aktivasyonu (satis ani) her yerde
+    # 'kurulum_tarihi = :k' (=simdi) yazar. Ayni ':k' degerini kullanarak
+    # satis_tarihi'ni if_not_exists ile ekle (yalniz ilk aktivasyon; yeniden
+    # kurulum / sahip degisikligi ezmez). Yeni ExpressionAttributeValue gerekmez.
+    hedef = "kurulum_tarihi = :k"
+    if hedef not in kaynak:
+        raise YamaAtla("'kurulum_tarihi = :k' (musteri aktivasyonu) bulunamadi; satis tarihi eklenmedi (aktivasyon akisi gomulu degil ya da bicim farkli).")
+    n = kaynak.count(hedef)
+    kaynak = kaynak.replace(hedef, "kurulum_tarihi = :k, satis_tarihi = if_not_exists(satis_tarihi, :k)")
+    print(f"YAMA: satis tarihi damgasi eklendi ({n} aktivasyon noktasi).")
     return kaynak, True
 
 
