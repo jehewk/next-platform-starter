@@ -38,9 +38,19 @@ class SahteTablo:
         adlar = ExpressionAttributeNames or {}
         for parca in re.split(r'\s+(?=SET|REMOVE)', UpdateExpression.strip()):
             if parca.upper().startswith('SET'):
-                for atama in parca[3:].split(','):
-                    sol, sag = [x.strip() for x in atama.split('=')]
-                    o[adlar.get(sol, sol)] = ExpressionAttributeValues[sag]
+                # Atamalar: "alan = :x" veya "alan = if_not_exists(alan, :x)".
+                # Değer biçimine göre ayrıştırılır (parantez içindeki virgül
+                # bölmeyi bozmasın diye split yerine regex kullanılır).
+                for m in re.finditer(r'(\S+)\s*=\s*(if_not_exists\([^)]*\)|:\w+)', parca[3:]):
+                    sol, sag = m.group(1).strip(), m.group(2).strip()
+                    hedef = adlar.get(sol, sol)
+                    inx = re.match(r'if_not_exists\(\s*([^,]+?)\s*,\s*(:\w+)\s*\)', sag)
+                    if inx:
+                        alan = adlar.get(inx.group(1).strip(), inx.group(1).strip())
+                        if alan not in o:          # alan yoksa yaz, varsa koru
+                            o[hedef] = ExpressionAttributeValues[inx.group(2)]
+                    else:
+                        o[hedef] = ExpressionAttributeValues[sag]
             elif parca.upper().startswith('REMOVE'):
                 for alan in parca[6:].split(','):
                     o.pop(adlar.get(alan.strip(), alan.strip()), None)

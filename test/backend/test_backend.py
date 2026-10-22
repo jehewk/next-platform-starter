@@ -316,12 +316,22 @@ def test_kurulum():
     cihaz = C.get_item(Key={'cihaz_id': 'AKU-9'})['Item']
     es(cihaz['musteri_id'], 'MST-1', "cihaz müşteriye bağlanmadı")
     es(cihaz['durum'], 'aktif', "durum aktif olmadı")
+    assert cihaz.get('satis_tarihi'), "ilk eşleşmede satış tarihi damgalanmadı"
+    ilk_satis = cihaz['satis_tarihi']
     assert E.get_item(Key={'kod': kod}).get('Item') is None, "kod tek kullanımlık değil (silinmedi)"
-    ok("kurulum/tanit: cihaz anahtar+kodla doğru müşteriye bağlanır, kod tek kullanımlık")
+    ok("kurulum/tanit: cihaz bağlanır + satış tarihi damgalanır, kod tek kullanımlık")
 
     # Tükenmiş kod ikinci kez kullanılamaz
     es(istek(mod, '/de/kurulum/tanit', {'cihaz_id': 'AKU-9', 'anahtar': 'GIZLI-9', 'eslesme_kodu': kod})[0], 404, "tükenmiş kod")
     ok("kurulum/tanit: tüketilen kod yeniden kullanılamaz")
+
+    # Yeniden eşleşme satış tarihini EZMEZ (if_not_exists; ilk satış anı korunur)
+    _, g2 = istek(mod, '/de/kurulum/basla', {}, token=MUS)
+    istek(mod, '/de/kurulum/tanit',
+          {'cihaz_id': 'AKU-9', 'anahtar': 'GIZLI-9', 'eslesme_kodu': g2['eslesme_kodu']})
+    es(C.get_item(Key={'cihaz_id': 'AKU-9'})['Item']['satis_tarihi'], ilk_satis,
+       "yeniden eşleşme satış tarihini ezmemeli")
+    ok("kurulum/tanit: satış tarihi ilk eşleşmede sabit, yeniden eşleşme ezmez")
 
 
 # ═══════════════════ C2. Bildirim aboneliği güvenliği (SSRF) ═══════════════════

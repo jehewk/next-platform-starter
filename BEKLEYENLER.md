@@ -47,6 +47,9 @@ Tarihler elle girilmez; cihazın kendi olaylarından otomatik damgalanır.
   - ⏳ **ESP32 firmware (fabrika)**: `esp32-saha/` WiFi provizyonu — önce
     tesis WiFi'si gömülü, eşleşmede müşteri WiFi'sine geçiş. Firmware/donanım
     işi; cihaz üstünde test edilir (mevcut esp32-saha boşluğuyla birlikte).
+  - ⏳ **Tesis WiFi bilgisi Dennis'ten**: fabrika firmware'ine gömülecek
+    üretici tesis WiFi SSID + parolası Dennis'ten alınacak (gizli; repoya
+    konmaz, firmware derlenirken enjekte edilir). Netleşince burayı güncelle.
 
 ## Seri üretim öncesi (saha/fabrika)
 > Zaman notu: Daly gerçek veri + fabrika testi ~20 gün sonra planlı (2026-10-13 itibarıyla).
