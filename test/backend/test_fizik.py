@@ -890,6 +890,59 @@ def _():
     dogru(not uygulandi, "depo kopyası zaten DE_KUSUR_PAYLASIMI işareti taşımalı")
 
 
+# ══════════════════ 14c. YAMA Q: satış tarihi (kurulum/tanit eşleşmesi) ════════
+
+_SATIS_STUB = '''
+from datetime import datetime, timezone
+
+dynamodb = None
+
+def _de_kurulum_tanit(body):
+    cid = body["cihaz_id"]
+    mid = body["musteri_id"]
+    ct = dynamodb.Table("x")
+    ct.update_item(Key={'cihaz_id': cid},
+                   UpdateExpression='SET musteri_id = :m, durum = :d',
+                   ExpressionAttributeValues={':m': mid, ':d': 'aktif'})
+    return 200, {'ok': True}
+'''
+
+
+@created("yama Q: eşleşmede satış tarihi damgası eklenir (if_not_exists)")
+def _():
+    yeni, uygulandi = yamala.yama_satis(_SATIS_STUB)
+    dogru(uygulandi, "yama uygulanmalı")
+    compile(yeni, "test", "exec")
+    dogru("satis_tarihi = if_not_exists(satis_tarihi, :s)" in yeni,
+          "satış tarihi yalnız ilk eşleşmede yazılmalı")
+    dogru("DE_SATIS_TARIHI" in yeni, "işaret eklenmeli")
+    dogru("datetime.now(timezone.utc)" in yeni, ":s değeri ISO zaman olmalı")
+
+
+@created("yama Q: idempotent — ikinci kez uygulanmaz")
+def _():
+    yeni, _u = yamala.yama_satis(_SATIS_STUB)
+    tekrar, uygulandi = yamala.yama_satis(yeni)
+    dogru(not uygulandi, "ikinci uygulamada değişiklik olmamalı")
+    esit(tekrar, yeni, "idempotent: içerik aynı kalmalı")
+
+
+@created("yama Q: kurulum eşleşmesi gömülü değilse güvenle atlanır")
+def _():
+    try:
+        yamala.yama_satis("from datetime import datetime, timezone\n")
+        dogru(False, "eşleşme yoksa YamaAtla beklenir")
+    except yamala.YamaAtla:
+        pass
+
+
+@created("yama Q: depo kaynağı (_KURULUM_YARDIMCI) zaten satış damgası içerir")
+def _():
+    with open(os.path.join(KOK, "aws", "ekler", "yamala.py"), encoding="utf-8") as f:
+        src = f.read()
+    dogru("DE_SATIS_TARIHI" in src, "kaynak yardımcı zaten DE_SATIS_TARIHI taşımalı")
+
+
 # ══════════════════ 15. KUSUR PAYLAŞIMI (yüzdelik, üretici paneli) ══════════════════
 
 @created("_yuzdele: ağırlıklar toplamı tam 100 olan yüzdeye çevrilir")

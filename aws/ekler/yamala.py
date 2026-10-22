@@ -1062,9 +1062,11 @@ def _de_kurulum_tanit(body):
         et.delete_item(Key={'kod': kod})
         return 410, {'hata': 'Eslesme kodu suresi dolmus'}
     mid = kayit['musteri_id']
+    # Musterinin app'ten ilk eslesmesi = SATIS ani. satis_tarihi yalniz ilk
+    # eslesmede yazilir (if_not_exists); sonraki yeniden-eslesmeler ezmez.
     ct.update_item(Key={'cihaz_id': cid},
-                   UpdateExpression='SET musteri_id = :m, durum = :d',
-                   ExpressionAttributeValues={':m': mid, ':d': 'aktif'})
+                   UpdateExpression='SET musteri_id = :m, durum = :d, satis_tarihi = if_not_exists(satis_tarihi, :s)',  # DE_SATIS_TARIHI
+                   ExpressionAttributeValues={':m': mid, ':d': 'aktif', ':s': datetime.now(timezone.utc).replace(tzinfo=None).isoformat()})
     et.delete_item(Key={'kod': kod})   # kod tek kullanimlik
     return 200, {'ok': True, 'musteri_id': mid}
 '''
@@ -1107,6 +1109,33 @@ def yama_kurulum(kaynak):
     return kaynak, True
 
 
+def yama_satis(kaynak):
+    """Q) Cihaz musteriye eslesince (kurulum/tanit) satis_tarihi damgalar.
+
+    Musterinin app'ten ilk baglanip cihazi kendine eslemesi = satis ani
+    (uretici tesisinden cikip musteri WiFi'sine gecis). satis_tarihi yalniz
+    ilk eslesmede yazilir (if_not_exists). Canlida zaten duran eski
+    _de_kurulum_tanit update_item'ini gunceller. Döner: (yeni, uygulandi)."""
+    if "DE_SATIS_TARIHI" in kaynak:
+        print("YAMA: satis tarihi damgasi zaten var.")
+        return kaynak, False
+    # Virgul degisime dahildir: yoksa isaret yorumu orijinal virgulun onune
+    # gecip onu yorumun icinde birakir (sozdizimi bozulur).
+    eski_ue = "UpdateExpression='SET musteri_id = :m, durum = :d',"
+    eski_ev = "ExpressionAttributeValues={':m': mid, ':d': 'aktif'})"
+    if eski_ue not in kaynak or eski_ev not in kaynak:
+        raise YamaAtla("kurulum/tanit eslesme update_item'i bulunamadi; satis tarihi eklenmedi (kurulum ucu gomulu degil ya da yapi farkli).")
+    if "from datetime import" not in kaynak:
+        raise YamaAtla("datetime import bulunamadi; satis tarihi damgasi eklenemedi.")
+    yeni_ue = ("UpdateExpression='SET musteri_id = :m, durum = :d, "
+               "satis_tarihi = if_not_exists(satis_tarihi, :s)',  # DE_SATIS_TARIHI")
+    yeni_ev = ("ExpressionAttributeValues={':m': mid, ':d': 'aktif', "
+               "':s': datetime.now(timezone.utc).replace(tzinfo=None).isoformat()})")
+    kaynak = kaynak.replace(eski_ue, yeni_ue, 1).replace(eski_ev, yeni_ev, 1)
+    print("YAMA: satis tarihi damgasi eklendi (kurulum/tanit).")
+    return kaynak, True
+
+
 def main():
     if len(sys.argv) == 3 and sys.argv[1] in ("--olcum-tablolari", "--olcum-tablosu"):
         try:
@@ -1134,7 +1163,8 @@ def main():
                      ("kusur paylasimi", yama_kusur),
                      ("profil guncelleme", yama_profil),
                      ("kayit konum", yama_kayit_konum),
-                     ("kurulum uclari", yama_kurulum)):
+                     ("kurulum uclari", yama_kurulum),
+                     ("satis tarihi", yama_satis)):
         try:
             kaynak, u = yama(kaynak)
             uygulandi.append(u)

@@ -33,6 +33,21 @@ uygulanacak) kararları tutar.
    alan adına taşı (ör. app.<alan>, panel.<alan>): Amplify custom domain +
    DNS kayıtları. API için de istenirse özel alan adı.
 
+## Cihaz yaşam döngüsü: üretildi → satıldı (otomatik tarih)
+Tarihler elle girilmez; cihazın kendi olaylarından otomatik damgalanır.
+- **Üretildi** (`uretim_tarihi`): ESP32'ye önce **üretici tesis WiFi'si** gömülü
+  gelir; ürün monte edilip testten geçip ilk açıldığında sisteme düşer
+  (fabrika provizyonu / `cihaz-uret.ps1`).
+- **Satıldı** (`satis_tarihi`): müşteri alınca kurulum ekibi bizim app'i
+  müşteriye indirtir; ESP WiFi'si **müşteri WiFi'si ile değişir** ve müşteri
+  app'ten **ilk eşleştiğinde** satış anı damgalanır. Backend tarafı HAZIR:
+  `_de_kurulum_tanit` (`/de/kurulum/tanit`) eşleşmede
+  `satis_tarihi = if_not_exists(...)` yazar (yamala.py Q; yalnız ilk
+  eşleşmede). Canlıya `hepsini-kur.ps1 -Atla backend,hesap,web` ile gider.
+  - ⏳ **ESP32 firmware (fabrika)**: `esp32-saha/` WiFi provizyonu — önce
+    tesis WiFi'si gömülü, eşleşmede müşteri WiFi'sine geçiş. Firmware/donanım
+    işi; cihaz üstünde test edilir (mevcut esp32-saha boşluğuyla birlikte).
+
 ## Seri üretim öncesi (saha/fabrika)
 > Zaman notu: Daly gerçek veri + fabrika testi ~20 gün sonra planlı (2026-10-13 itibarıyla).
 > O güne kadar donanım adımları beklemede; yazılım/platform hazır.
